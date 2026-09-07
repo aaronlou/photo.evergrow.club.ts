@@ -13,6 +13,8 @@ import {
   HubNotJoined,
   InvalidQuantity,
   NotJoinedGroup,
+  SampleImageForbidden,
+  SampleImageNotFound,
 } from "../domain/errors.js"
 import type { FilmId, SampleImage } from "../domain/film.js"
 import { Film, makeFilmId } from "../domain/film.js"
@@ -289,6 +291,37 @@ export class GroupBuyService extends Effect.Service<GroupBuyService>()("GroupBuy
           }
           yield* films.save(film.addSampleImage(image))
           return image
+        }),
+
+      /**
+       * 删除冲洗样片：上传者本人或管理员。
+       * 同时删除磁盘文件失败不阻断（孤儿文件可接受，数据一致优先）。
+       */
+      removeSampleImage: (
+        filmId: FilmId,
+        imageId: string,
+        requesterId: string,
+        isAdmin: boolean,
+      ): Effect.Effect<
+        Film,
+        FilmNotFound | SampleImageNotFound | SampleImageForbidden | PersistenceError
+      > =>
+        Effect.gen(function* () {
+          const film = yield* requireFilm(filmId)
+          const image = film.sampleImages.find((img) => img.id === imageId)
+          if (!image) {
+            return yield* Effect.fail(new SampleImageNotFound({ filmId, imageId }))
+          }
+          if (!isAdmin && image.uploadedBy !== requesterId) {
+            return yield* Effect.fail(new SampleImageForbidden({ filmId, imageId }))
+          }
+          const updated = film.removeSampleImage(imageId)
+          yield* films.save(updated)
+          const key = image.url.split("/").pop()
+          if (key) {
+            yield* images.remove(key).pipe(Effect.ignore)
+          }
+          return updated
         }),
 
       /** [管理端] 新增商品：ID 由 brand + name + format 生成 slug，冲突时追加随机后缀 */

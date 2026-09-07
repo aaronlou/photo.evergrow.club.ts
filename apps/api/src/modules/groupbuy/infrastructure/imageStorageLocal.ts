@@ -46,6 +46,11 @@ export const ImageStorageLocal = Layer.effect(
           yield* mapPersistence(fs.copyFile(input.fromPath, join(uploadsDir, key)))
           return { key, url: `/api/groupbuy/images/${key}` }
         }),
+      remove: (key) =>
+        // 防目录穿越：key 只允许纯文件名
+        mapPersistence(fs.remove(join(uploadsDir, key.replace(/[/\\]/g, "")))).pipe(
+          Effect.catchAll(() => Effect.void), // 文件不存在视为成功
+        ),
     })
   }),
 )

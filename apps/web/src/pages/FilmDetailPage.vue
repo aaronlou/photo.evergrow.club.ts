@@ -17,7 +17,7 @@ import {
   type UploadCustomRequestOptions,
 } from "naive-ui"
 
-import { api, ApiClientError } from "@/api/client"
+import { api, ApiClientError, getMyUserId } from "@/api/client"
 import { useHubStore } from "@/stores/hub"
 import type { FilmCatalogDetailDto, GroupProgressDto, HubDto } from "@evergrow/contracts"
 
@@ -204,6 +204,26 @@ async function saveInfo(part: "features" | "scenarios") {
   }
 }
 
+// 样片删除：上传者本人或管理员（adminToken 存在即视为管理员身份，由后端最终校验）
+const myUserId = getMyUserId()
+const hasAdminToken = !!localStorage.getItem("evergrow-admin-token")
+
+function canDeleteImage(uploadedBy: string): boolean {
+  return uploadedBy === myUserId || hasAdminToken
+}
+
+async function removeImage(imageId: string) {
+  if (!film.value) return
+  if (!window.confirm("确定删除这张样片吗？")) return
+  try {
+    const { data } = await api.deleteSampleImage(film.value.id, imageId)
+    film.value = data
+    message.success("样片已删除")
+  } catch (e) {
+    message.error(e instanceof ApiClientError ? e.message : String(e))
+  }
+}
+
 const yuan = (cents: number) => `¥${(cents / 100).toFixed(1)}`
 const memberCount = computed(() => progress.value?.memberCount ?? 0)
 const participantCount = computed(() => progress.value?.participantCount ?? 0)
@@ -384,13 +404,17 @@ onUnmounted(() => clearInterval(timer))
           />
           <n-image-group v-else>
             <div class="gallery">
-              <n-image
-                v-for="img in film.sampleImages"
-                :key="img.id"
-                :src="img.url"
-                class="gallery-item"
-                object-fit="cover"
-              />
+              <div v-for="img in film.sampleImages" :key="img.id" class="gallery-cell">
+                <n-image :src="img.url" class="gallery-item" object-fit="cover" />
+                <button
+                  v-if="canDeleteImage(img.uploadedBy)"
+                  class="gallery-del"
+                  title="删除样片"
+                  @click="removeImage(img.id)"
+                >
+                  ×
+                </button>
+              </div>
             </div>
           </n-image-group>
         </section>

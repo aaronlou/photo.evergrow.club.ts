@@ -1,3 +1,4 @@
+import { HttpApiSchema } from "@effect/platform"
 import { Schema } from "effect"
 
 import { FilmId } from "./film.js"
@@ -44,3 +45,12 @@ export class InvalidQuantity extends Schema.TaggedError<InvalidQuantity>("Invali
 export class FilmAlreadyExists extends Schema.TaggedError<FilmAlreadyExists>(
   "FilmAlreadyExists",
 )("FilmAlreadyExists", { filmId: FilmId }) {}
+
+export class SampleImageNotFound extends Schema.TaggedError<SampleImageNotFound>(
+  "SampleImageNotFound",
+)("SampleImageNotFound", { filmId: FilmId, imageId: Schema.String }, HttpApiSchema.annotations({ status: 404 })) {}
+
+/** 非样片上传者本人且非管理员，无权删除 */
+export class SampleImageForbidden extends Schema.TaggedError<SampleImageForbidden>(
+  "SampleImageForbidden",
+)("SampleImageForbidden", { filmId: FilmId, imageId: Schema.String }, HttpApiSchema.annotations({ status: 403 })) {}

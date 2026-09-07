@@ -42,6 +42,9 @@ function currentUserId(): string {
   return id
 }
 
+/** 当前匿名用户 ID（供页面判断"是否我上传的"等展示逻辑） */
+export const getMyUserId = currentUserId
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {
     "x-user-id": currentUserId(),
@@ -57,6 +60,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiClientError(res.status, body as ApiErrorDto | null)
   }
   return body as T
+}
+
+/**
+ * 上传文件名消毒：后端 multipart 解析器不支持非 ASCII 文件名
+ * （filename*=UTF-8'' 编码会导致字段被丢弃 → 400 "file is missing"），
+ * 统一替换为 ASCII 安全名，仅保留原始扩展名。
+ */
+function safeFileName(file: File): string {
+  const ext = file.name.includes(".") ? (file.name.split(".").pop() ?? "") : ""
+  const clean = ext.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8)
+  return `upload-${Date.now().toString(36)}${crypto.randomUUID().slice(0, 6)}.${clean || "bin"}`
 }
 
 /** 类型化 API 客户端：路径与 packages/contracts 中的契约一一对应 */
@@ -108,12 +122,18 @@ export const api = {
     ),
   uploadSampleImage: (filmId: string, file: File) => {
     const form = new FormData()
-    form.append("file", file)
+    form.append("file", file, safeFileName(file))
     return request<{ data: SampleImageDto }>(
       `/groupbuy/films/${encodeURIComponent(filmId)}/images`,
       { method: "POST", body: form },
     )
   },
+  // 删除样片：上传者本人或管理员
+  deleteSampleImage: (filmId: string, imageId: string) =>
+    request<{ data: FilmCatalogDetailDto }>(
+      `/groupbuy/films/${encodeURIComponent(filmId)}/images/${encodeURIComponent(imageId)}`,
+      { method: "DELETE" },
+    ),
 
   // ===== admin（商品后台管理，需 x-admin-token） =====
   createFilm: (input: CreateFilmInput, adminToken: string) =>
@@ -130,7 +150,7 @@ export const api = {
     }),
   setFilmCover: (id: string, file: File, adminToken: string) => {
     const form = new FormData()
-    form.append("file", file)
+    form.append("file", file, safeFileName(file))
     return request<{ data: FilmCatalogDetailDto }>(
       `/admin/groupbuy/films/${encodeURIComponent(id)}/cover`,
       { method: "POST", headers: { "x-admin-token": adminToken }, body: form },

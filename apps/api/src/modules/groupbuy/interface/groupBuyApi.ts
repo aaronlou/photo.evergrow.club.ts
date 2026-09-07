@@ -3,6 +3,7 @@ import type { HttpServerRequest } from "@effect/platform"
 import { Option, Schema } from "effect"
 
 import { ApiError, UnauthorizedError } from "../../../interface/apiError.js"
+import { SampleImageForbidden, SampleImageNotFound } from "../domain/errors.js"
 import type { GroupProgress } from "../application/groupBuyService.js"
 import type { Film } from "../domain/film.js"
 import type { Hub } from "../domain/hub.js"
@@ -265,6 +266,15 @@ export const GroupBuyApi = HttpApiGroup.make("groupbuy")
       .setPayload(UploadPayload)
       .addSuccess(Schema.Struct({ data: SampleImageDto }))
       .addError(ApiError),
+  )
+  .add(
+    // 删除样片：上传者本人或管理员
+    HttpApiEndpoint.del("deleteSampleImage", "/films/:filmId/images/:imageId")
+      .setPath(Schema.Struct({ filmId: Schema.String, imageId: Schema.String }))
+      .addSuccess(Schema.Struct({ data: FilmCatalogDetailDto }))
+      .addError(ApiError)
+      .addError(SampleImageNotFound)
+      .addError(SampleImageForbidden),
   )
   .add(
     HttpApiEndpoint.get("getUploadedImage", "/images/:key")

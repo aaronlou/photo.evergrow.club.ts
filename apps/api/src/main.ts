@@ -1,5 +1,5 @@
 import { FileSystem, Headers, HttpServerRequest, HttpServerResponse } from "@effect/platform"
-import { Config, Effect, Layer, Logger, Option } from "effect"
+import { Config, Effect, Either, Layer, Logger, Option } from "effect"
 import { Clock } from "effect"
 import { HttpApiBuilder, HttpApiSwagger } from "@effect/platform"
 import { NodeFileSystem, NodeHttpServer, NodePath, NodeRuntime } from "@effect/platform-node"
@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url"
 
 import { Api } from "./api.js"
 import { ApiError, toApiError, UnauthorizedError } from "./interface/apiError.js"
+import { SampleImageForbidden, SampleImageNotFound } from "./modules/groupbuy/domain/errors.js"
 import { ActivityService } from "./modules/activity/application/activityService.js"
 import { makeActivityId } from "./modules/activity/domain/activity.js"
 import { ActivityRepositoryInMemory } from "./modules/activity/infrastructure/activityRepositoryInMemory.js"
@@ -201,6 +202,26 @@ const GroupBuyGroupLive = HttpApiBuilder.group(Api, "groupbuy", (handlers) =>
             Effect.map((image) => ({ data: image })),
             Effect.mapError(toApiError),
           )
+      })
+      .handle("deleteSampleImage", ({ path, request }) => {
+        const uid = currentUserId(request)
+        return Effect.either(requireAdmin(request)).pipe(
+          Effect.flatMap((adminResult) =>
+            groupBuy.removeSampleImage(
+              makeFilmId(path.filmId),
+              path.imageId,
+              uid,
+              Either.isRight(adminResult),
+            ),
+          ),
+          Effect.map((film) => ({ data: toFilmCatalogDetailDto(film) })),
+          // 403/404 保持原始错误类型（带正确状态码），其余归一为 ApiError
+          Effect.mapError((e) =>
+            e instanceof SampleImageForbidden || e instanceof SampleImageNotFound
+              ? e
+              : toApiError(e),
+          ),
+        )
       })
       .handle("getUploadedImage", ({ path }) => serveImage(path.key, uploadsDir, fs))
       .handle("getFilmCover", ({ path }) => serveImage(path.key, filmAssetsDir, fs))

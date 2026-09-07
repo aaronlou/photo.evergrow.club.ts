@@ -83,6 +83,14 @@ export class Film extends Schema.Class<Film>("Film")({
     return new Film({ ...this, sampleImages: [...this.sampleImages, image] })
   }
 
+  /** 移除指定样片（不存在时返回原聚合） */
+  removeSampleImage(imageId: string): Film {
+    return new Film({
+      ...this,
+      sampleImages: this.sampleImages.filter((img) => img.id !== imageId),
+    })
+  }
+
   /** [管理端] 更新商品文案（描述 / 特性 / 适用场景，仅传的字段生效） */
   editInfo(input: {
     description?: string

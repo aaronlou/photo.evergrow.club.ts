@@ -1,12 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="420" viewBox="0 0 640 420">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480" viewBox="0 0 640 480">
   <defs>
-    <linearGradient id="g2" x1="0" y1="1" x2="1" y2="0">
-      <stop offset="0%" stop-color="#89f7fe"/>
-      <stop offset="100%" stop-color="#66a6ff"/>
+    <pattern id="s2" x="0" y="0" width="42" height="30" patternUnits="userSpaceOnUse">
+      <rect x="10" y="8" width="22" height="14" rx="3" fill="#f2f2f2" opacity="0.85" />
+    </pattern>
+    <linearGradient id="bg2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#89c9a4" />
+      <stop offset="100%" stop-color="#5b9ec9" />
     </linearGradient>
   </defs>
-  <rect width="640" height="420" fill="url(#g2)"/>
-  <rect x="28" y="28" width="584" height="364" fill="none" stroke="#fff" stroke-opacity="0.75" stroke-width="3" stroke-dasharray="14 10"/>
-  <polygon points="320,110 460,300 180,300" fill="#fff" fill-opacity="0.35"/>
-  <text x="320" y="238" font-family="Georgia, serif" font-size="36" fill="#173a52" text-anchor="middle">样片 02 · 清冷蓝调</text>
+  <rect width="640" height="480" fill="#1c1f1a" />
+  <rect y="14" width="640" height="30" fill="url(#s2)" />
+  <rect y="436" width="640" height="30" fill="url(#s2)" />
+  <rect x="24" y="66" width="592" height="348" fill="url(#bg2)" />
+  <rect x="120" y="150" width="180" height="180" fill="#fff" fill-opacity="0.28" />
+  <text x="320" y="256" font-family="Georgia, serif" font-size="30" fill="#1f3a2e" text-anchor="middle">样片 02 · 日系清新</text>
+  <text x="320" y="292" font-family="sans-serif" font-size="15" fill="#2e5243" text-anchor="middle">上传你的样片，替换这张占位图</text>
+  <text x="46" y="102" font-family="monospace" font-size="14" fill="#1f3a2e" opacity="0.7">FRAME 02</text>
 </svg>

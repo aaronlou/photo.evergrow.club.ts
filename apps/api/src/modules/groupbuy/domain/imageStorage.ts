@@ -24,6 +24,8 @@ export class ImageStorage extends Effect.Service<ImageStorage>()("ImageStorage",
     return {
       store: (_input: ImageUploadInput): Effect.Effect<StoredImage, PersistenceError> =>
         Effect.fail(new PersistenceError({ message: "ImageStorage 未装配" })),
+      /** 按 key 删除已存储的图片（文件不存在视为成功） */
+      remove: (_key: string): Effect.Effect<void, PersistenceError> => Effect.void,
     }
   }),
 }) {}
