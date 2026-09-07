@@ -11,7 +11,7 @@ import {
   useMessage,
 } from "naive-ui"
 
-import { api } from "@/api/client"
+import { api, ApiClientError } from "@/api/client"
 import type { FilmCatalogDetailDto, FilmCatalogDto } from "@evergrow/contracts"
 
 /**
@@ -68,15 +68,24 @@ function selectFilm(id: string) {
 async function saveToken() {
   const t = tokenDraft.value.trim()
   if (!t) return
-  // 用一个轻量请求验证令牌（故意提交空 patch，401 则提示）
+  // 用一个必然 401/非 401 的探测请求校验令牌：
+  // - 401 → 令牌错误；其它错误（如商品不存在）说明令牌已通过校验
   try {
     adminToken.value = t
-    await api.updateFilm(films.value[0]?.id ?? "ping", {}, t)
+    await api.updateFilm("ping", {}, t)
     localStorage.setItem(TOKEN_KEY, t)
     message.success("令牌已保存")
+    void load()
   } catch (e) {
-    adminToken.value = ""
-    message.error(e instanceof Error && e.message.includes("401") ? "令牌不正确" : "令牌校验失败")
+    if (e instanceof ApiClientError && e.status === 401) {
+      adminToken.value = ""
+      message.error("令牌不正确")
+    } else {
+      // 令牌有效（探测请求因商品不存在而失败）
+      localStorage.setItem(TOKEN_KEY, t)
+      message.success("令牌已保存")
+      void load()
+    }
   }
 }
 

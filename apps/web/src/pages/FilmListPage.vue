@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue"
+import { computed, onMounted, ref } from "vue"
 import { useRouter } from "vue-router"
-import { NEmpty, NSpin, NTag } from "naive-ui"
+import { NEmpty, NSegmented, NSpin, NTag } from "naive-ui"
 
 import { api } from "@/api/client"
 import type { FilmCatalogDto } from "@evergrow/contracts"
@@ -10,6 +10,7 @@ const router = useRouter()
 const films = ref<FilmCatalogDto[]>([])
 const loading = ref(true)
 const error = ref("")
+const activeFormat = ref<"135" | "120">("135")
 
 async function load() {
   try {
@@ -20,6 +21,8 @@ async function load() {
     loading.value = false
   }
 }
+
+const filteredFilms = computed(() => films.value.filter((f) => f.format === activeFormat.value))
 
 const yuan = (cents: number) => `¥${(cents / 100).toFixed(1)}`
 
@@ -33,13 +36,20 @@ onMounted(load)
         <h2 class="page-title">选胶卷</h2>
         <p class="page-sub">先挑心仪的胶卷，再选个位置点参与拼团；位置点选定后会自动复用</p>
       </div>
+      <n-segmented
+        v-model:value="activeFormat"
+        :options="[
+          { label: '135', value: '135' },
+          { label: '120', value: '120' },
+        ]"
+      />
     </div>
 
     <n-spin :show="loading">
-      <n-empty v-if="!loading && films.length === 0" description="暂无可选胶卷" />
+      <n-empty v-if="!loading && filteredFilms.length === 0" description="当前画幅暂无可选胶卷" />
       <div v-else class="film-grid">
         <div
-          v-for="film in films"
+          v-for="film in filteredFilms"
           :key="film.id"
           class="film-card"
           role="button"
