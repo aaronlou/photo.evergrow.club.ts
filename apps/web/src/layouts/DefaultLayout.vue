@@ -5,9 +5,7 @@ import { RouterLink, RouterView } from "vue-router"
 <template>
   <div class="app-shell">
     <header class="app-header">
-      <RouterLink to="/" class="brand">
-        摄影团团圈<span class="brand-sub">EverGrow</span>
-      </RouterLink>
+      <RouterLink to="/" class="brand">摄影团团圈</RouterLink>
       <nav class="app-nav">
         <RouterLink to="/">首页</RouterLink>
         <RouterLink to="/films">选胶卷</RouterLink>
