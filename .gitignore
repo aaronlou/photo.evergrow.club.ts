@@ -7,3 +7,7 @@ coverage/
 *.log
 .DS_Store
 apps/api/uploads/
+
+# 包管理器/工具的项目内缓存（非源码，勿提交）
+.pnpm-store/
+.idea/
