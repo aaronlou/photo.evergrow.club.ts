@@ -57,6 +57,12 @@ onMounted(load)
               <span class="film-iso">ISO {{ film.iso }}</span>
             </div>
             <p class="film-brand">{{ film.brand }} · {{ film.process }}</p>
+            <div v-if="film.features.length" class="film-tags">
+              <span v-for="f in film.features.slice(0, 2)" :key="f" class="film-tag">{{ f }}</span>
+            </div>
+            <p v-if="film.scenarios.length" class="film-scenes" :title="film.scenarios.join(' / ')">
+              <span class="scenes-label">适用</span>{{ film.scenarios.slice(0, 4).join(" · ") }}
+            </p>
             <p class="film-prices">
               <span class="price-deal">{{ yuan(film.groupBuyPriceInCents) }}</span>
               <span class="price-origin">{{ yuan(film.basePriceInCents) }}</span>

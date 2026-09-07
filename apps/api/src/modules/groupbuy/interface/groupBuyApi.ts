@@ -2,7 +2,7 @@ import { Headers, HttpApiEndpoint, HttpApiGroup, HttpApiSchema, Multipart } from
 import type { HttpServerRequest } from "@effect/platform"
 import { Option, Schema } from "effect"
 
-import { ApiError } from "../../../interface/apiError.js"
+import { ApiError, UnauthorizedError } from "../../../interface/apiError.js"
 import type { GroupProgress } from "../application/groupBuyService.js"
 import type { Film } from "../domain/film.js"
 import type { Hub } from "../domain/hub.js"
@@ -53,6 +53,7 @@ export type FilmDto = Schema.Schema.Type<typeof FilmDto>
 
 export const FilmDetailDto = Schema.Struct({
   ...FilmDto.fields,
+  description: Schema.String,
   features: Schema.Array(Schema.String),
   scenarios: Schema.Array(Schema.String),
   sampleImages: Schema.Array(SampleImageDto),
@@ -72,11 +73,14 @@ export const FilmCatalogDto = Schema.Struct({
   groupBuyPriceInCents: Schema.Int,
   threshold: Schema.Int,
   sampleImageCount: Schema.Int,
+  features: Schema.Array(Schema.String),
+  scenarios: Schema.Array(Schema.String),
 })
 export type FilmCatalogDto = Schema.Schema.Type<typeof FilmCatalogDto>
 
 export const FilmCatalogDetailDto = Schema.Struct({
   ...FilmCatalogDto.fields,
+  description: Schema.String,
   features: Schema.Array(Schema.String),
   scenarios: Schema.Array(Schema.String),
   sampleImages: Schema.Array(SampleImageDto),
@@ -131,6 +135,7 @@ export const toFilmDto = (film: Film, progress: GroupProgress): FilmDto => ({
 
 export const toFilmDetailDto = (film: Film, progress: GroupProgress): FilmDetailDto => ({
   ...toFilmDto(film, progress),
+  description: film.description,
   features: film.features,
   scenarios: film.scenarios,
   sampleImages: film.sampleImages,
@@ -148,10 +153,13 @@ export const toFilmCatalogDto = (film: Film): FilmCatalogDto => ({
   groupBuyPriceInCents: film.deal.groupBuyPriceInCents,
   threshold: film.deal.threshold,
   sampleImageCount: film.sampleImages.length,
+  features: film.features,
+  scenarios: film.scenarios,
 })
 
 export const toFilmCatalogDetailDto = (film: Film): FilmCatalogDetailDto => ({
   ...toFilmCatalogDto(film),
+  description: film.description,
   features: film.features,
   scenarios: film.scenarios,
   sampleImages: film.sampleImages,
@@ -259,4 +267,38 @@ export const GroupBuyApi = HttpApiGroup.make("groupbuy")
     HttpApiEndpoint.get("getDemoImage", "/images/demo/:key")
       .setPath(Schema.Struct({ key: Schema.String }))
       .addError(ApiError),
+  )
+
+// ===== 管理端 API（组合根统一校验 x-admin-token） =====
+
+/** [管理端] 更新商品文案：仅传的字段生效 */
+const AdminUpdateFilmPayload = Schema.Struct({
+  description: Schema.optional(Schema.String),
+  features: Schema.optional(Schema.Array(Schema.String)),
+  scenarios: Schema.optional(Schema.Array(Schema.String)),
+})
+
+/** [管理端] 封面图上传（multipart：file 部分为图片文件） */
+const AdminCoverUploadPayload = HttpApiSchema.Multipart(
+  Schema.Struct({
+    file: Multipart.SingleFileSchema,
+  }),
+)
+
+export const AdminApi = HttpApiGroup.make("admin")
+  .add(
+    HttpApiEndpoint.patch("updateFilm", "/groupbuy/films/:filmId")
+      .setPath(Schema.Struct({ filmId: Schema.String }))
+      .setPayload(AdminUpdateFilmPayload)
+      .addSuccess(Schema.Struct({ data: FilmCatalogDetailDto }))
+      .addError(ApiError)
+      .addError(UnauthorizedError),
+  )
+  .add(
+    HttpApiEndpoint.post("setFilmCover", "/groupbuy/films/:filmId/cover")
+      .setPath(Schema.Struct({ filmId: Schema.String }))
+      .setPayload(AdminCoverUploadPayload)
+      .addSuccess(Schema.Struct({ data: FilmCatalogDetailDto }))
+      .addError(ApiError)
+      .addError(UnauthorizedError),
   )

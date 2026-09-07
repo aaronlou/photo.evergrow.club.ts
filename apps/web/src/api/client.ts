@@ -11,6 +11,7 @@ import type {
   HealthDto,
   HubDto,
   SampleImageDto,
+  UpdateFilmInput,
   UserDto,
 } from "@evergrow/contracts"
 
@@ -41,8 +42,12 @@ function currentUserId(): string {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const headers: Record<string, string> = { "x-user-id": currentUserId() }
-  if (!(init?.body instanceof FormData)) {
+  const headers: Record<string, string> = {
+    "x-user-id": currentUserId(),
+    // 允许调用方附加请求头（如管理端 x-admin-token）
+    ...((init?.headers as Record<string, string>) ?? {}),
+  }
+  if (!(init?.body instanceof FormData) && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json"
   }
   const res = await fetch(`/api${path}`, { ...init, headers })
@@ -100,6 +105,22 @@ export const api = {
     return request<{ data: SampleImageDto }>(
       `/groupbuy/films/${encodeURIComponent(filmId)}/images`,
       { method: "POST", body: form },
+    )
+  },
+
+  // ===== admin（商品后台管理，需 x-admin-token） =====
+  updateFilm: (id: string, input: UpdateFilmInput, adminToken: string) =>
+    request<{ data: FilmCatalogDetailDto }>(`/admin/groupbuy/films/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "x-admin-token": adminToken },
+      body: JSON.stringify(input),
+    }),
+  setFilmCover: (id: string, file: File, adminToken: string) => {
+    const form = new FormData()
+    form.append("file", file)
+    return request<{ data: FilmCatalogDetailDto }>(
+      `/admin/groupbuy/films/${encodeURIComponent(id)}/cover`,
+      { method: "POST", headers: { "x-admin-token": adminToken }, body: form },
     )
   },
 

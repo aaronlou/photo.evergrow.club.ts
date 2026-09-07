@@ -54,7 +54,7 @@ const seedHubs = (now: Date): ReadonlyArray<Hub> => [
   }),
 ]
 
-const seedFilms = (): ReadonlyArray<Film> => [
+export const seedFilms = (): ReadonlyArray<Film> => [
   // ===== 135 画幅 =====
   Film.create({
     id: makeFilmId("film-kodak-gold-200-135"),

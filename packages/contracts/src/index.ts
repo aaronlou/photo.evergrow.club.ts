@@ -65,6 +65,7 @@ export interface SampleImageDto {
 
 /** 胶卷商品详情 */
 export interface FilmDetailDto extends FilmDto {
+  description: string
   features: string[]
   scenarios: string[]
   sampleImages: SampleImageDto[]
@@ -83,13 +84,25 @@ export interface FilmCatalogDto {
   groupBuyPriceInCents: number
   threshold: number
   sampleImageCount: number
+  /** 胶卷特性 */
+  features: string[]
+  /** 适用场景 */
+  scenarios: string[]
 }
 
 /** 商品目录详情（不依赖位置点） */
 export interface FilmCatalogDetailDto extends FilmCatalogDto {
+  description: string
   features: string[]
   scenarios: string[]
   sampleImages: SampleImageDto[]
+}
+
+/** [管理端] 更新商品文案（仅传的字段生效） */
+export interface UpdateFilmInput {
+  description?: string
+  features?: string[]
+  scenarios?: string[]
 }
 
 /** 拼团进度 */

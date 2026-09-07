@@ -281,6 +281,35 @@ export class GroupBuyService extends Effect.Service<GroupBuyService>()("GroupBuy
           yield* films.save(film.addSampleImage(image))
           return image
         }),
+
+      /** [管理端] 更新商品文案（描述 / 特性 / 适用场景） */
+      updateFilm: (
+        filmId: FilmId,
+        patch: {
+          description?: string
+          features?: ReadonlyArray<string>
+          scenarios?: ReadonlyArray<string>
+        },
+      ): Effect.Effect<Film, FilmNotFound | PersistenceError> =>
+        Effect.gen(function* () {
+          const film = yield* requireFilm(filmId)
+          const updated = film.editInfo(patch)
+          yield* films.save(updated)
+          return updated
+        }),
+
+      /** [管理端] 更换商品封面图 */
+      setFilmCover: (
+        filmId: FilmId,
+        file: ImageUploadInput,
+      ): Effect.Effect<Film, FilmNotFound | PersistenceError> =>
+        Effect.gen(function* () {
+          const film = yield* requireFilm(filmId)
+          const stored = yield* images.store(file)
+          const updated = film.replaceCover(stored.url)
+          yield* films.save(updated)
+          return updated
+        }),
     }
   }),
 }) {}

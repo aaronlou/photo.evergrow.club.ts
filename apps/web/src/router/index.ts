@@ -44,6 +44,12 @@ const router = createRouter({
           name: "my-activities",
           component: () => import("@/pages/MyActivitiesPage.vue"),
         },
+        {
+          // 管理端不进导航，直接访问 URL（鉴权靠 ADMIN_TOKEN）
+          path: "admin/films",
+          name: "admin-films",
+          component: () => import("@/pages/AdminFilmsPage.vue"),
+        },
       ],
     },
     { path: "/:pathMatch(.*)*", redirect: "/" },

@@ -1,3 +1,4 @@
+import { HttpApiSchema } from "@effect/platform"
 import { Schema } from "effect"
 
 /**
@@ -9,6 +10,13 @@ export class ApiError extends Schema.TaggedError<ApiError>("ApiError")("ApiError
   code: Schema.String,
   message: Schema.String,
 }) {}
+
+/** 管理端鉴权失败（HTTP 401） */
+export class UnauthorizedError extends Schema.TaggedError<UnauthorizedError>()(
+  "UnauthorizedError",
+  { message: Schema.String },
+  HttpApiSchema.annotations({ status: 401 }),
+) {}
 
 export const toApiError = (error: unknown): ApiError => {
   if (error instanceof Error) {

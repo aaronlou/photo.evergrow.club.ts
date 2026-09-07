@@ -39,6 +39,9 @@
 cat > .env <<'EOF'
 WEB_PORT=8080                 # 宿主机暴露端口
 POSTGRES_PASSWORD=change-me   # 务必修改
+# 商品后台管理令牌（/admin/* 接口校验 x-admin-token；留空则管理端禁用）
+# 生成：openssl rand -hex 16
+ADMIN_TOKEN=
 # 私有镜像仓库才需要：
 # GHCR_USER=your-github-user
 # GHCR_TOKEN=your-fine-grained-pat (read:packages)

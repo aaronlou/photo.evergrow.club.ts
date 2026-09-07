@@ -1,0 +1,329 @@
+<script setup lang="ts">
+import { computed, onMounted, ref } from "vue"
+import {
+  NButton,
+  NDynamicTags,
+  NEmpty,
+  NInput,
+  NP,
+  NSelect,
+  NSpin,
+  useMessage,
+} from "naive-ui"
+
+import { api } from "@/api/client"
+import type { FilmCatalogDetailDto, FilmCatalogDto } from "@evergrow/contracts"
+
+/**
+ * 商品后台管理（仅限管理员）：
+ * - 访问 /admin/films，首次输入管理员令牌（后端 ADMIN_TOKEN）存入 localStorage
+ * - 支持编辑商品描述 / 特性 / 适用场景，上传更换封面图
+ */
+
+const TOKEN_KEY = "evergrow-admin-token"
+const message = useMessage()
+
+const adminToken = ref(localStorage.getItem(TOKEN_KEY) ?? "")
+const tokenDraft = ref("")
+
+const loading = ref(true)
+const saving = ref(false)
+const uploadingCover = ref(false)
+const films = ref<FilmCatalogDto[]>([])
+const details = ref<Record<string, FilmCatalogDetailDto>>({})
+const selectedId = ref<string>("")
+
+const selected = computed(() => (selectedId.value ? details.value[selectedIdId()] : null))
+
+function selectedIdId(): string {
+  return selectedId.value
+}
+
+// 编辑表单（本地草稿，保存时提交）
+const draft = ref<{ description: string; features: string[]; scenarios: string[] }>({
+  description: "",
+  features: [],
+  scenarios: [],
+})
+
+const filmOptions = computed(() =>
+  films.value.map((f) => ({
+    label: `${f.name}（${f.format}）`,
+    value: f.id,
+  })),
+)
+
+function selectFilm(id: string) {
+  selectedId.value = id
+  const d = details.value[id]
+  if (d) {
+    draft.value = {
+      description: d.description,
+      features: [...d.features],
+      scenarios: [...d.scenarios],
+    }
+  }
+}
+
+async function saveToken() {
+  const t = tokenDraft.value.trim()
+  if (!t) return
+  // 用一个轻量请求验证令牌（故意提交空 patch，401 则提示）
+  try {
+    adminToken.value = t
+    await api.updateFilm(films.value[0]?.id ?? "ping", {}, t)
+    localStorage.setItem(TOKEN_KEY, t)
+    message.success("令牌已保存")
+  } catch (e) {
+    adminToken.value = ""
+    message.error(e instanceof Error && e.message.includes("401") ? "令牌不正确" : "令牌校验失败")
+  }
+}
+
+async function load() {
+  loading.value = true
+  try {
+    films.value = (await api.listAllFilms()).data
+    const results = await Promise.all(films.value.map((f) => api.getFilmById(f.id)))
+    for (const { data } of results) {
+      details.value[data.id] = data
+    }
+    if (films.value.length > 0) selectFilm(films.value[0].id)
+  } catch (e) {
+    message.error(e instanceof Error ? e.message : String(e))
+  } finally {
+    loading.value = false
+  }
+}
+
+async function save() {
+  if (!selected.value || !adminToken.value) return
+  saving.value = true
+  try {
+    const { data } = await api.updateFilm(
+      selected.value.id,
+      {
+        description: draft.value.description,
+        features: draft.value.features,
+        scenarios: draft.value.scenarios,
+      },
+      adminToken.value,
+    )
+    details.value[data.id] = data
+    message.success("已保存")
+  } catch (e) {
+    message.error(e instanceof Error ? e.message : String(e))
+  } finally {
+    saving.value = false
+  }
+}
+
+async function uploadCover(file: File) {
+  if (!selected.value || !adminToken.value) return
+  uploadingCover.value = true
+  try {
+    const { data } = await api.setFilmCover(selected.value.id, file, adminToken.value)
+    details.value[data.id] = data
+    message.success("封面已更新")
+  } catch (e) {
+    message.error(e instanceof Error ? e.message : String(e))
+  } finally {
+    uploadingCover.value = false
+  }
+}
+
+function onCoverChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (file) void uploadCover(file)
+  input.value = ""
+}
+
+onMounted(() => {
+  if (adminToken.value) void load()
+  else loading.value = false
+})
+</script>
+
+<template>
+  <div class="page">
+    <div class="activity-head">
+      <div>
+        <h2 class="page-title">商品管理</h2>
+        <p class="page-sub">维护胶卷商品的描述、特性、适用场景与封面图（仅限管理员）</p>
+      </div>
+    </div>
+
+    <!-- 令牌门禁 -->
+    <div v-if="!adminToken" class="admin-token-gate">
+      <n-p>请输入管理员令牌（服务器 ADMIN_TOKEN 环境变量）</n-p>
+      <div class="admin-token-row">
+        <n-input
+          v-model:value="tokenDraft"
+          type="password"
+          show-password-on="click"
+          placeholder="ADMIN_TOKEN"
+          @keydown.enter="saveToken"
+        />
+        <n-button type="primary" @click="saveToken">进入</n-button>
+      </div>
+    </div>
+
+    <n-spin v-else :show="loading">
+      <n-empty v-if="!loading && films.length === 0" description="暂无商品" />
+      <div v-else class="admin-layout">
+        <aside class="admin-list">
+          <n-select v-model:value="selectedId" :options="filmOptions" @update:value="selectFilm" />
+        </aside>
+
+        <section v-if="selected" class="admin-editor">
+          <!-- 封面 -->
+          <div class="admin-cover">
+            <img :src="selected.coverImageUrl" :alt="selected.name" />
+            <label class="admin-cover-btn">
+              <input type="file" accept="image/*" :disabled="uploadingCover" @change="onCoverChange" />
+              {{ uploadingCover ? "上传中…" : "更换封面" }}
+            </label>
+          </div>
+
+          <div class="admin-form">
+            <div class="admin-field">
+              <span class="admin-label">商品</span>
+              <span>{{ selected.name }} · {{ selected.brand }} · ISO {{ selected.iso }} · {{ selected.format }}</span>
+            </div>
+
+            <div class="admin-field">
+              <span class="admin-label">描述</span>
+              <n-input
+                v-model:value="draft.description"
+                type="textarea"
+                :rows="4"
+                placeholder="商品长描述，展示在详情页"
+              />
+            </div>
+
+            <div class="admin-field">
+              <span class="admin-label">特性</span>
+              <n-dynamic-tags v-model:value="draft.features" />
+            </div>
+
+            <div class="admin-field">
+              <span class="admin-label">适用场景</span>
+              <n-dynamic-tags v-model:value="draft.scenarios" />
+            </div>
+
+            <n-button type="primary" :loading="saving" @click="save">保存</n-button>
+          </div>
+        </section>
+      </div>
+    </n-spin>
+  </div>
+</template>
+
+<style scoped>
+.admin-token-gate {
+  background: #fff;
+  border: 1px solid #e8ede9;
+  border-radius: 14px;
+  padding: 28px;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.admin-token-row {
+  display: flex;
+  gap: 8px;
+}
+
+.admin-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.admin-list {
+  background: #fff;
+  border: 1px solid #e8ede9;
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.admin-editor {
+  background: #fff;
+  border: 1px solid #e8ede9;
+  border-radius: 14px;
+  padding: 20px;
+  display: flex;
+  gap: 24px;
+}
+
+.admin-cover {
+  flex: 0 0 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.admin-cover img {
+  width: 220px;
+  height: 165px;
+  object-fit: cover;
+  border-radius: 10px;
+  background: #f0f3f0;
+}
+
+.admin-cover-btn {
+  text-align: center;
+  font-size: 13px;
+  padding: 8px;
+  border: 1px dashed #c6d2c8;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--evergrow-text-sub, #5d6b63);
+}
+
+.admin-cover-btn:hover {
+  border-color: var(--evergrow-primary, #2f9e63);
+  color: var(--evergrow-primary, #2f9e63);
+}
+
+.admin-cover-btn input {
+  display: none;
+}
+
+.admin-form {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.admin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.admin-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--evergrow-text, #22302a);
+}
+
+@media (max-width: 860px) {
+  .admin-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-editor {
+    flex-direction: column;
+  }
+
+  .admin-cover {
+    flex: none;
+  }
+}
+</style>

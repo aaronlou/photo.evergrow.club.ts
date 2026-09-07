@@ -1,4 +1,4 @@
-import { FileSystem, HttpServerResponse } from "@effect/platform"
+import { FileSystem, Headers, HttpServerRequest, HttpServerResponse } from "@effect/platform"
 import { Config, Effect, Layer, Logger, Option } from "effect"
 import { Clock } from "effect"
 import { HttpApiBuilder, HttpApiSwagger } from "@effect/platform"
@@ -8,7 +8,7 @@ import { dirname, join, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 
 import { Api } from "./api.js"
-import { toApiError } from "./interface/apiError.js"
+import { ApiError, toApiError, UnauthorizedError } from "./interface/apiError.js"
 import { ActivityService } from "./modules/activity/application/activityService.js"
 import { makeActivityId } from "./modules/activity/domain/activity.js"
 import { ActivityRepositoryInMemory } from "./modules/activity/infrastructure/activityRepositoryInMemory.js"
@@ -26,6 +26,7 @@ import {
   GroupBuyRepositoryInMemory,
   HubRepositoryInMemory,
 } from "./modules/groupbuy/infrastructure/groupBuyInMemory.js"
+import { FilmRepositorySql } from "./modules/groupbuy/infrastructure/filmRepositorySql.js"
 import { ImageStorageLocal, uploadsDir } from "./modules/groupbuy/infrastructure/imageStorageLocal.js"
 import {
   currentUserId,
@@ -245,6 +246,57 @@ const ActivityGroupLive = HttpApiBuilder.group(Api, "activity", (handlers) =>
   }),
 )
 
+/**
+ * 管理端鉴权：请求头 x-admin-token 必须等于 ADMIN_TOKEN 配置；
+ * 未配置 ADMIN_TOKEN 时管理端点全部拒绝（安全默认）。
+ */
+const requireAdmin = (
+  request: HttpServerRequest.HttpServerRequest,
+): Effect.Effect<void, UnauthorizedError> =>
+  Effect.gen(function* () {
+    // Option<Option<string>>：外层为配置读取失败，内层为未配置 ADMIN_TOKEN
+    const configured = Option.flatten(
+      yield* Config.option(Config.string("ADMIN_TOKEN")).pipe(Effect.option),
+    )
+    const provided = Headers.get(request.headers, "x-admin-token")
+    if (Option.isNone(configured) || Option.getOrUndefined(provided) !== configured.value) {
+      return yield* Effect.fail(
+        new UnauthorizedError({ message: "管理员令牌缺失或不正确" }),
+      )
+    }
+  })
+
+/** 管理端错误映射：UnauthorizedError 保持 401，其余归一为 ApiError */
+const toAdminError = <E>(error: E): ApiError | UnauthorizedError =>
+  error instanceof UnauthorizedError ? error : toApiError(error)
+
+const AdminGroupLive = HttpApiBuilder.group(Api, "admin", (handlers) =>
+  Effect.gen(function* () {
+    const groupBuy = yield* GroupBuyService
+    return handlers
+      .handle("updateFilm", ({ path, request, payload }) =>
+        requireAdmin(request).pipe(
+          Effect.andThen(() => groupBuy.updateFilm(makeFilmId(path.filmId), payload)),
+          Effect.map((film) => ({ data: toFilmCatalogDetailDto(film) })),
+          Effect.mapError(toAdminError),
+        ),
+      )
+      .handle("setFilmCover", ({ path, request, payload }) =>
+        requireAdmin(request).pipe(
+          Effect.andThen(() =>
+            groupBuy.setFilmCover(makeFilmId(path.filmId), {
+              fromPath: payload.file.path,
+              name: payload.file.name,
+              contentType: payload.file.contentType,
+            }),
+          ),
+          Effect.map((film) => ({ data: toFilmCatalogDetailDto(film) })),
+          Effect.mapError(toAdminError),
+        ),
+      )
+  }),
+)
+
 /** activity：仓储按 DATABASE_URL 切换（未配置回落到内存仓储，含种子数据） */
 const ActivityPersistenceLive = Layer.unwrapEffect(
   Config.option(Config.string("DATABASE_URL")).pipe(
@@ -271,17 +323,27 @@ const PersistenceLive = Layer.unwrapEffect(
   ),
 )
 
+/** groupbuy film：仓储按 DATABASE_URL 切换（SQL 版空表自动种子；未配置回落内存） */
+const FilmPersistenceLive = Layer.unwrapEffect(
+  Config.option(Config.string("DATABASE_URL")).pipe(
+    Effect.map((url) =>
+      Option.isSome(url) ? FilmRepositorySql.pipe(Layer.provide(DbLive)) : FilmRepositoryInMemory,
+    ),
+  ),
+)
+
 const ApiLive = HttpApiBuilder.api(Api).pipe(
   Layer.provide(HealthGroupLive),
   Layer.provide(IdentityGroupLive),
   Layer.provide(GroupBuyGroupLive),
   Layer.provide(ActivityGroupLive),
+  Layer.provide(AdminGroupLive),
   Layer.provide(UserService.Default),
   Layer.provide(PersistenceLive),
-  // groupbuy：内存仓储 + 本地磁盘图片存储（SQL/OSS 适配器后续接入）
+  // groupbuy：hub/拼团进度用内存仓储；film 仓储按 DATABASE_URL 切换（管理端编辑持久化）
   Layer.provide(GroupBuyService.Default),
   Layer.provide(HubRepositoryInMemory),
-  Layer.provide(FilmRepositoryInMemory),
+  Layer.provide(FilmPersistenceLive),
   Layer.provide(GroupBuyRepositoryInMemory),
   Layer.provide(ImageStorageLocal),
   Layer.provide(NodeFileSystem.layer),

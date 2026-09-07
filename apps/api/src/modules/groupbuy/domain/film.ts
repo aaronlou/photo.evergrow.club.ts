@@ -39,6 +39,8 @@ export class Film extends Schema.Class<Film>("Film")({
   process: Schema.String,
   /** 商品封面图 */
   coverImageUrl: Schema.String,
+  /** 商品长描述（管理端维护；种子数据默认为空） */
+  description: Schema.optionalWith(Schema.String, { default: () => "" }),
   features: Schema.Array(Schema.String),
   scenarios: Schema.Array(Schema.String),
   sampleImages: Schema.Array(SampleImage),
@@ -77,5 +79,24 @@ export class Film extends Schema.Class<Film>("Film")({
 
   addSampleImage(image: SampleImage): Film {
     return new Film({ ...this, sampleImages: [...this.sampleImages, image] })
+  }
+
+  /** [管理端] 更新商品文案（描述 / 特性 / 适用场景，仅传的字段生效） */
+  editInfo(input: {
+    description?: string
+    features?: ReadonlyArray<string>
+    scenarios?: ReadonlyArray<string>
+  }): Film {
+    return new Film({
+      ...this,
+      description: input.description ?? this.description,
+      features: input.features ? [...input.features] : this.features,
+      scenarios: input.scenarios ? [...input.scenarios] : this.scenarios,
+    })
+  }
+
+  /** [管理端] 更换商品封面图 */
+  replaceCover(url: string): Film {
+    return new Film({ ...this, coverImageUrl: url })
   }
 }
