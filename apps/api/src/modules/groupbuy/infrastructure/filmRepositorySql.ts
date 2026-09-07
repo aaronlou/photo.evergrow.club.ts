@@ -104,7 +104,8 @@ export const FilmRepositorySql = Layer.effect(
         ).pipe(Effect.asVoid),
     })
 
-    // 首次启动（空表）：写入种子数据，保证 SQL 模式与内存模式商品目录一致
+    // 首次启动（空表）：写入种子数据，保证 SQL 模式与内存模式商品目录一致。
+    // 初始化失败（如表未建，迁移未跑）只告警不中断启动，避免整个服务崩溃循环。
     yield* query(sql`SELECT COUNT(*)::int AS count FROM groupbuy_films`).pipe(
       Effect.map((rows) => (rows as unknown as ReadonlyArray<{ count: number }>)[0]?.count ?? 0),
       Effect.flatMap((count) =>
@@ -112,6 +113,10 @@ export const FilmRepositorySql = Layer.effect(
           ? Effect.forEach(seedFilms(), (film) => repo.save(film), { discard: true })
           : Effect.void,
       ),
+      Effect.tapError((e) =>
+        Effect.logWarning(`film 表种子数据初始化失败（请检查迁移是否执行）: ${e.message}`),
+      ),
+      Effect.ignore,
     )
 
     return repo

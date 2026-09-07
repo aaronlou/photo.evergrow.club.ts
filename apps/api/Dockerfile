@@ -20,6 +20,8 @@ FROM node:24-alpine
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=prod-deps /app /app
+# 迁移脚本必须随镜像分发（不依赖 deploy 的文件裁剪行为）
+COPY --from=build /repo/apps/api/migrations /app/migrations
 EXPOSE 3000
 # 先跑数据库迁移（未配置 DATABASE_URL 时自动跳过），再启动服务
 CMD ["sh", "-c", "node dist/migrate.js && node dist/main.js"]
