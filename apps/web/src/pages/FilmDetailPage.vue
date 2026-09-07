@@ -405,7 +405,7 @@ onUnmounted(() => clearInterval(timer))
           <n-image-group v-else>
             <div class="gallery">
               <div v-for="img in film.sampleImages" :key="img.id" class="gallery-cell">
-                <n-image :src="img.url" class="gallery-item" object-fit="cover" />
+                <n-image :src="img.url" class="gallery-item" />
                 <button
                   v-if="canDeleteImage(img.uploadedBy)"
                   class="gallery-del"
