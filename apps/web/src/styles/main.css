@@ -670,7 +670,8 @@ a {
   cursor: zoom-in;
 }
 
-.gallery-item :deep(img) {
+/* 注意：main.css 是全局样式（非 scoped），不能用 :deep()——浏览器会丢弃整条规则 */
+.gallery-item img {
   max-width: 100%;
   max-height: 100%;
   width: auto;
