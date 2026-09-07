@@ -228,6 +228,19 @@ export const GroupBuyApi = HttpApiGroup.make("groupbuy")
       .addError(ApiError),
   )
   .add(
+    // 用户协作共建：登录用户可完善商品特性 / 适用场景（覆盖式更新所传列表）
+    HttpApiEndpoint.patch("contributeFilmInfo", "/films/:filmId/info")
+      .setPath(Schema.Struct({ filmId: Schema.String }))
+      .setPayload(
+        Schema.Struct({
+          features: Schema.optional(Schema.Array(Schema.String)),
+          scenarios: Schema.optional(Schema.Array(Schema.String)),
+        }),
+      )
+      .addSuccess(Schema.Struct({ data: FilmCatalogDetailDto }))
+      .addError(ApiError),
+  )
+  .add(
     HttpApiEndpoint.post("joinGroupBuy", "/hubs/:hubId/films/:filmId/join")
       .setPath(Schema.Struct({ hubId: Schema.String, filmId: Schema.String }))
       .setPayload(Schema.Struct({ quantity: Schema.Int }))

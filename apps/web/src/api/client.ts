@@ -78,6 +78,12 @@ export const api = {
   listAllFilms: () => request<{ data: FilmCatalogDto[] }>("/groupbuy/films"),
   getFilmById: (id: string) =>
     request<{ data: FilmCatalogDetailDto }>(`/groupbuy/films/${encodeURIComponent(id)}`),
+  // 用户协作共建：完善商品特性 / 适用场景
+  contributeFilmInfo: (id: string, input: { features?: string[]; scenarios?: string[] }) =>
+    request<{ data: FilmCatalogDetailDto }>(`/groupbuy/films/${encodeURIComponent(id)}/info`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
   // 位置点下的商品与进度
   listFilms: (hubId: string) =>
     request<{ data: FilmDto[] }>(`/groupbuy/hubs/${encodeURIComponent(hubId)}/films`),

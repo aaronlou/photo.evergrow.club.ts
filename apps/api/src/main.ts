@@ -151,6 +151,17 @@ const GroupBuyGroupLive = HttpApiBuilder.group(Api, "groupbuy", (handlers) =>
           Effect.mapError(toApiError),
         ),
       )
+      .handle("contributeFilmInfo", ({ path, payload }) =>
+        groupBuy
+          .updateFilm(makeFilmId(path.filmId), {
+            features: payload.features,
+            scenarios: payload.scenarios,
+          })
+          .pipe(
+            Effect.map((film) => ({ data: toFilmCatalogDetailDto(film) })),
+            Effect.mapError(toApiError),
+          ),
+      )
       .handle("joinGroupBuy", ({ path, request, payload }) => {
         const uid = currentUserId(request)
         return groupBuy

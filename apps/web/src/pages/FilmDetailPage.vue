@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import {
   NButton,
+  NDynamicTags,
   NEmpty,
   NImage,
   NImageGroup,
@@ -166,6 +167,43 @@ async function handleUpload({ file, onFinish, onError }: UploadCustomRequestOpti
   }
 }
 
+// 特性 / 适用场景：用户协作编辑
+const editingFeatures = ref(false)
+const editingScenarios = ref(false)
+const featuresDraft = ref<string[]>([])
+const scenariosDraft = ref<string[]>([])
+const savingInfo = ref(false)
+
+function editFeatures() {
+  featuresDraft.value = [...(film.value?.features ?? [])]
+  editingFeatures.value = true
+}
+
+function editScenarios() {
+  scenariosDraft.value = [...(film.value?.scenarios ?? [])]
+  editingScenarios.value = true
+}
+
+async function saveInfo(part: "features" | "scenarios") {
+  if (!film.value) return
+  savingInfo.value = true
+  try {
+    const input =
+      part === "features"
+        ? { features: featuresDraft.value }
+        : { scenarios: scenariosDraft.value }
+    const { data } = await api.contributeFilmInfo(film.value.id, input)
+    film.value = data
+    if (part === "features") editingFeatures.value = false
+    else editingScenarios.value = false
+    message.success("已更新，感谢共建")
+  } catch (e) {
+    message.error(e instanceof ApiClientError ? e.message : String(e))
+  } finally {
+    savingInfo.value = false
+  }
+}
+
 const yuan = (cents: number) => `¥${(cents / 100).toFixed(1)}`
 const memberCount = computed(() => progress.value?.memberCount ?? 0)
 const participantCount = computed(() => progress.value?.participantCount ?? 0)
@@ -282,26 +320,54 @@ onUnmounted(() => clearInterval(timer))
         </div>
 
         <section class="detail-section">
-          <h3>胶卷特性</h3>
-          <div class="tag-row">
+          <div class="section-head">
+            <h3>胶卷特性<span class="section-hint">人人可完善</span></h3>
+            <n-button v-if="!editingFeatures" size="tiny" quaternary type="primary" @click="editFeatures">
+              编辑
+            </n-button>
+          </div>
+          <div v-if="!editingFeatures" class="tag-row">
             <n-tag v-for="(f, i) in film.features" :key="i" type="info" round>
               {{ f }}
             </n-tag>
           </div>
-        </section>
-
-        <section class="detail-section">
-          <h3>适用场景</h3>
-          <div class="tag-row">
-            <n-tag v-for="(s, i) in film.scenarios" :key="i" type="warning" round>
-              {{ s }}
-            </n-tag>
+          <div v-else class="info-edit">
+            <n-dynamic-tags v-model:value="featuresDraft" />
+            <div class="info-edit-actions">
+              <n-button size="tiny" @click="editingFeatures = false">取消</n-button>
+              <n-button size="tiny" type="primary" :loading="savingInfo" @click="saveInfo('features')">
+                保存
+              </n-button>
+            </div>
           </div>
         </section>
 
         <section class="detail-section">
           <div class="section-head">
-            <h3>冲洗样片</h3>
+            <h3>适用场景<span class="section-hint">人人可完善</span></h3>
+            <n-button v-if="!editingScenarios" size="tiny" quaternary type="primary" @click="editScenarios">
+              编辑
+            </n-button>
+          </div>
+          <div v-if="!editingScenarios" class="tag-row">
+            <n-tag v-for="(s, i) in film.scenarios" :key="i" type="warning" round>
+              {{ s }}
+            </n-tag>
+          </div>
+          <div v-else class="info-edit">
+            <n-dynamic-tags v-model:value="scenariosDraft" />
+            <div class="info-edit-actions">
+              <n-button size="tiny" @click="editingScenarios = false">取消</n-button>
+              <n-button size="tiny" type="primary" :loading="savingInfo" @click="saveInfo('scenarios')">
+                保存
+              </n-button>
+            </div>
+          </div>
+        </section>
+
+        <section class="detail-section">
+          <div class="section-head">
+            <h3>冲洗样片<span v-if="film.sampleImages.length" class="section-count">{{ film.sampleImages.length }}</span></h3>
             <n-upload
               :custom-request="handleUpload"
               :show-file-list="false"

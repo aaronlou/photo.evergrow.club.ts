@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue"
 import { useRouter } from "vue-router"
-import { NEmpty, NSpin, NTab, NTabs, NTag } from "naive-ui"
+import { NEmpty, NSpin, NTag } from "naive-ui"
 
 import { api } from "@/api/client"
 import type { FilmCatalogDto } from "@evergrow/contracts"
@@ -36,10 +36,24 @@ onMounted(load)
         <h2 class="page-title">选胶卷</h2>
         <p class="page-sub">先挑心仪的胶卷，再选个位置点参与拼团；位置点选定后会自动复用</p>
       </div>
-      <n-tabs v-model:value="activeFormat" type="segment" size="small" class="format-tabs">
-        <n-tab name="135">135</n-tab>
-        <n-tab name="120">120</n-tab>
-      </n-tabs>
+      <div class="format-switch" role="tablist" aria-label="画幅切换">
+        <button
+          role="tab"
+          :aria-selected="activeFormat === '135'"
+          :class="{ active: activeFormat === '135' }"
+          @click="activeFormat = '135'"
+        >
+          135
+        </button>
+        <button
+          role="tab"
+          :aria-selected="activeFormat === '120'"
+          :class="{ active: activeFormat === '120' }"
+          @click="activeFormat = '120'"
+        >
+          120
+        </button>
+      </div>
     </div>
 
     <n-spin :show="loading">
