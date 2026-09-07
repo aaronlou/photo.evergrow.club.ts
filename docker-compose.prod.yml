@@ -1,13 +1,15 @@
-# 生产部署编排：一条命令拉起全部服务
-#   docker compose -f docker-compose.prod.yml up -d --build
-# 访问 http://<服务器>:8080（WEB_PORT 可改），API 文档在 /docs
+# =====================================================================
+# 生产部署编排（镜像拉取版）
+#   docker compose -f docker-compose.prod.yml up -d
+# 镜像由 GitHub Actions 构建并推送到 GHCR（见 .github/workflows/docker-build-push.yml），
+# 服务器只需拉取镜像 + 这套编排，不需要源码/Docker 构建。
+# 可用 .env 覆盖：API_IMAGE / WEB_IMAGE（镜像地址）、WEB_PORT、POSTGRES_PASSWORD。
+# =====================================================================
 name: evergrow
 
 services:
   api:
-    build:
-      context: .
-      dockerfile: apps/api/Dockerfile
+    image: ${API_IMAGE:-ghcr.io/aaronlou/photo.evergrow.club.ts/api:latest}
     restart: unless-stopped
     environment:
       PORT: "3000"
@@ -20,9 +22,7 @@ services:
       - "3000"
 
   web:
-    build:
-      context: .
-      dockerfile: apps/web/Dockerfile
+    image: ${WEB_IMAGE:-ghcr.io/aaronlou/photo.evergrow.club.ts/web:latest}
     restart: unless-stopped
     ports:
       - "${WEB_PORT:-8080}:80"

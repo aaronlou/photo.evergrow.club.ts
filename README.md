@@ -47,20 +47,22 @@ pnpm test        # 运行测试（vitest）
 pnpm lint        # ESLint（含 DDD 分层边界规则）
 ```
 
-## Docker 部署
+## Docker 部署（镜像拉取版）
 
-生产环境一条命令部署（api + web + postgres + redis）：
+镜像由 **GitHub Actions** 构建并推送 GHCR（`.github/workflows/docker-build-push.yml`），服务器只需拉取镜像：
 
 ```bash
-docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml up -d   # 自动 pull + 启动 api/web/postgres/redis
 ```
 
-- 访问 `http://<服务器>:8080`（宿主机端口用 `WEB_PORT` 环境变量调整，如 `WEB_PORT=18080 docker compose -f docker-compose.prod.yml up -d`）
-- 数据库密码用 `POSTGRES_PASSWORD` 环境变量配置（默认 `evergrow`，生产务必修改）
+- 访问 `http://<服务器>:8080`（宿主机端口用 `WEB_PORT` 调整，如 `WEB_PORT=18080 docker compose -f docker-compose.prod.yml up -d`）
+- 数据库密码用 `POSTGRES_PASSWORD` 配置（默认 `evergrow`，生产务必修改）
 - **api 容器启动时自动执行 `apps/api/migrations/` 下的数据库迁移**（Effect SQL Migrator，幂等可重复执行）
 - 配置了 `DATABASE_URL` 时后端自动切换到 PostgreSQL 仓储；未配置则回落到内存仓储
 - 数据持久化在 `evergrow_pgdata` 卷；备份示例：`docker compose -f docker-compose.prod.yml exec postgres pg_dump -U evergrow evergrow > backup.sql`
 - 前端由 Nginx 托管并反向代理 `/api` 到 api 容器（SPA 路由回退已配置），api 不直接暴露到宿主机
+
+> GitHub 侧仓库权限 / GHCR 包可见性、服务器端登录与首次部署，见 **[docs/deploy.md](docs/deploy.md)**。
 
 ### 生产 HTTPS
 
@@ -76,6 +78,8 @@ caddy reverse-proxy --from your-domain.com --to localhost:8080
 ```bash
 docker compose -f docker-compose.prod.yml ps                 # 状态
 docker compose -f docker-compose.prod.yml logs -f api        # api 日志
+docker compose -f docker-compose.prod.yml pull               # 拉取最新镜像
+docker compose -f docker-compose.prod.yml up -d              # 应用更新
 docker compose -f docker-compose.prod.yml restart api        # 滚动重启单个服务
 docker compose -f docker-compose.prod.yml down               # 停止（保留数据卷）
 ```
