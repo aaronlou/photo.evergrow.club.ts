@@ -10,12 +10,14 @@ import {
   HubClosed,
   HubNotFound,
   HubNotJoined,
+  InvalidQuantity,
+  NotJoinedGroup,
 } from "../domain/errors.js"
 import type { Film, FilmId, SampleImage } from "../domain/film.js"
-import type { GroupBuyStatus } from "../domain/groupBuy.js";
+import type { DeliveryMode, GroupBuyStatus } from "../domain/groupBuy.js"
 import { GroupBuy } from "../domain/groupBuy.js"
 import type { Hub, HubId } from "../domain/hub.js"
-import type { ImageUploadInput } from "../domain/imageStorage.js";
+import type { ImageUploadInput } from "../domain/imageStorage.js"
 import { ImageStorage } from "../domain/imageStorage.js"
 import { FilmRepository, GroupBuyRepository, HubRepository } from "../domain/repository.js"
 
@@ -23,10 +25,23 @@ import { FilmRepository, GroupBuyRepository, HubRepository } from "../domain/rep
 export interface GroupProgress {
   readonly hubId: HubId
   readonly filmId: FilmId
+  /** 累计件数（成团判定依据） */
   readonly memberCount: number
+  /** 参与人数 */
+  readonly participantCount: number
   readonly threshold: number
   readonly status: GroupBuyStatus
+  /** 还差多少件成团 */
+  readonly remaining: number
   readonly joinedByMe: boolean
+  /** 我的购买数量 */
+  readonly myQuantity: number
+  readonly unitPriceInCents: number
+  readonly totalInCents: number
+  /** 订金（总金额 × 10%） */
+  readonly depositInCents: number
+  readonly depositPaid: boolean
+  readonly deliveryMode: DeliveryMode
 }
 
 export interface FilmWithProgress {
@@ -36,7 +51,8 @@ export interface FilmWithProgress {
 
 /**
  * GroupBuyService 用例层：胶卷团购的完整业务编排。
- * 流程：查看位置点 → 加入位置点 → 浏览商品 → 加入心愿单（参团）→ 等待成团。
+ * 流程：查看位置点 → 加入位置点 → 浏览商品 → 加入心愿单（参团，可指定数量）
+ * → 等待成团；服务模式为货到付款，下单需支付总金额 10% 订金。
  */
 export class GroupBuyService extends Effect.Service<GroupBuyService>()("GroupBuyService", {
   effect: Effect.gen(function* () {
@@ -70,20 +86,38 @@ export class GroupBuyService extends Effect.Service<GroupBuyService>()("GroupBuy
         ),
       )
 
-    /** 未成团时返回 0 成员的进度，不落库 */
+    /** 从聚合 + 商品构建进度（纯函数） */
+    const progressOfGroup = (group: GroupBuy, film: Film, userId: string): GroupProgress => {
+      const participant = group.participantOf(userId)
+      const unitPriceInCents = film.deal.groupBuyPriceInCents
+      return {
+        hubId: group.hubId,
+        filmId: film.id,
+        memberCount: group.totalQuantity(),
+        participantCount: group.participantCount(),
+        threshold: film.deal.threshold,
+        remaining: Math.max(0, film.deal.threshold - group.totalQuantity()),
+        status: group.status,
+        joinedByMe: group.hasJoined(userId),
+        myQuantity: participant?.quantity ?? 0,
+        unitPriceInCents,
+        totalInCents: participant?.totalInCents ?? 0,
+        depositInCents: participant?.depositInCents ?? 0,
+        depositPaid: participant?.depositPaid ?? false,
+        deliveryMode: "COD",
+      }
+    }
+
+    /** 未成团时返回 0 件进度，不落库 */
     const progressOf = (hubId: HubId, film: Film, userId: string) =>
       groups.findByHubAndFilm(hubId, film.id).pipe(
-        Effect.map((option) => {
-          const group = Option.getOrElse(option, () => GroupBuy.open({ hubId, filmId: film.id }))
-          return {
-            hubId,
-            filmId: film.id,
-            memberCount: group.memberCount(),
-            threshold: film.deal.threshold,
-            status: group.status,
-            joinedByMe: group.hasJoined(userId),
-          } satisfies GroupProgress
-        }),
+        Effect.map((option) =>
+          progressOfGroup(
+            Option.getOrElse(option, () => GroupBuy.open({ hubId, filmId: film.id })),
+            film,
+            userId,
+          ),
+        ),
       )
 
     return {
@@ -139,16 +173,25 @@ export class GroupBuyService extends Effect.Service<GroupBuyService>()("GroupBuy
           return { film, progress }
         }),
 
-      /** 4. 加入团购心愿单（参团） */
+      /** 4. 加入团购心愿单（参团，可指定数量） */
       joinGroupBuy: (
         hubId: HubId,
         filmId: FilmId,
         userId: string,
+        quantity: number,
       ): Effect.Effect<
         GroupProgress,
-        HubNotFound | FilmNotFound | HubNotJoined | AlreadyJoinedGroup | PersistenceError
+        | HubNotFound
+        | FilmNotFound
+        | HubNotJoined
+        | AlreadyJoinedGroup
+        | InvalidQuantity
+        | PersistenceError
       > =>
         Effect.gen(function* () {
+          if (!Number.isInteger(quantity) || quantity < 1) {
+            return yield* Effect.fail(new InvalidQuantity({ quantity }))
+          }
           const hub = yield* requireHub(hubId)
           if (!hub.hasJoined(userId)) {
             return yield* Effect.fail(new HubNotJoined({ hubId }))
@@ -161,7 +204,7 @@ export class GroupBuyService extends Effect.Service<GroupBuyService>()("GroupBuy
             return yield* Effect.fail(new AlreadyJoinedGroup({ hubId, filmId }))
           }
 
-          const updated = group.join(userId, film.deal.threshold)
+          const updated = group.join(userId, quantity, film.deal.groupBuyPriceInCents, film.deal.threshold)
           yield* groups.save(updated)
 
           // 成团：发布领域事件（当前仅日志，后续接事件总线驱动订单/通知）
@@ -170,20 +213,35 @@ export class GroupBuyService extends Effect.Service<GroupBuyService>()("GroupBuy
               _tag: "GroupBuySucceeded",
               hubId,
               filmId,
-              memberCount: updated.memberCount(),
+              memberCount: updated.totalQuantity(),
               occurredAt: new Date(yield* Clock.currentTimeMillis),
             }
-            yield* Effect.logInfo(`【成团】${hubId} × ${filmId} 已达 ${event.memberCount} 人`)
+            yield* Effect.logInfo(`【成团】${hubId} × ${filmId} 已达 ${event.memberCount} 件`)
           }
 
-          return {
-            hubId,
-            filmId,
-            memberCount: updated.memberCount(),
-            threshold: film.deal.threshold,
-            status: updated.status,
-            joinedByMe: true,
+          return progressOfGroup(updated, film, userId)
+        }),
+
+      /** 4+. 支付订金（总金额的 10%，货到付款；无真实支付网关，模拟标记） */
+      payDeposit: (
+        hubId: HubId,
+        filmId: FilmId,
+        userId: string,
+      ): Effect.Effect<GroupProgress, FilmNotFound | NotJoinedGroup | PersistenceError> =>
+        Effect.gen(function* () {
+          const film = yield* requireFilm(filmId)
+          const existing = yield* groups.findByHubAndFilm(hubId, filmId)
+          const group = Option.getOrElse(existing, () => GroupBuy.open({ hubId, filmId }))
+          if (!group.hasJoined(userId)) {
+            return yield* Effect.fail(new NotJoinedGroup({ hubId, filmId }))
           }
+
+          const updated = group.markDepositPaid(userId)
+          yield* groups.save(updated)
+          yield* Effect.logInfo(
+            `【支付订金】${hubId} × ${filmId} 用户 ${userId} 已支付订金 ¥${(progressOfGroup(updated, film, userId).depositInCents / 100).toFixed(2)}`,
+          )
+          return progressOfGroup(updated, film, userId)
         }),
 
       /** 5. 拼团进度（轮询"等待达到某个数量"） */
@@ -197,6 +255,14 @@ export class GroupBuyService extends Effect.Service<GroupBuyService>()("GroupBuy
           const film = yield* requireFilm(filmId)
           return yield* progressOf(hubId, film, userId)
         }),
+
+      /** 全局商品列表（不依赖位置点） */
+      listAllFilms: (): Effect.Effect<ReadonlyArray<Film>, PersistenceError> =>
+        films.findAll(),
+
+      /** 全局商品详情（不依赖位置点） */
+      getFilmById: (filmId: FilmId): Effect.Effect<Film, FilmNotFound | PersistenceError> =>
+        requireFilm(filmId),
 
       /** 上传冲洗样片 */
       uploadSampleImage: (

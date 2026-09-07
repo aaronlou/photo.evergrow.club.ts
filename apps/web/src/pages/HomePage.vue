@@ -27,10 +27,11 @@ onMounted(async () => {
         后端未连接（请先启动 apps/api）
       </n-tag>
       <n-tag v-else size="small">连接中…</n-tag>
-      <h1 class="hero-title">拾光团购</h1>
-      <p class="hero-sub">摄影爱好者的品质团购社区 —— 拼团买专业摄影服务</p>
+      <h1 class="hero-title">摄影团团圈</h1>
+      <p class="hero-sub">摄影爱好者的团购圈子 —— 拼团买专业摄影服务，人越多越划算</p>
       <div class="hero-actions">
-        <n-button type="primary" size="large" @click="router.push('/groups')">去拼团</n-button>
+        <n-button type="primary" size="large" @click="router.push('/films')">去选胶卷</n-button>
+        <n-button size="large" @click="router.push('/activities')">参加活动</n-button>
         <n-button size="large" @click="router.push('/me')">注册体验</n-button>
       </div>
     </section>

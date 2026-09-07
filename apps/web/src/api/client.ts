@@ -1,5 +1,10 @@
 import type {
+  ActivityDetailDto,
+  ActivityDto,
   ApiErrorDto,
+  CreateActivityInput,
+  FilmCatalogDetailDto,
+  FilmCatalogDto,
   FilmDetailDto,
   FilmDto,
   GroupProgressDto,
@@ -64,15 +69,25 @@ export const api = {
     request<{ data: HubDto }>(`/groupbuy/hubs/${encodeURIComponent(id)}/join`, {
       method: "POST",
     }),
+  // 全局商品（不依赖位置点）
+  listAllFilms: () => request<{ data: FilmCatalogDto[] }>("/groupbuy/films"),
+  getFilmById: (id: string) =>
+    request<{ data: FilmCatalogDetailDto }>(`/groupbuy/films/${encodeURIComponent(id)}`),
+  // 位置点下的商品与进度
   listFilms: (hubId: string) =>
     request<{ data: FilmDto[] }>(`/groupbuy/hubs/${encodeURIComponent(hubId)}/films`),
   getFilm: (hubId: string, filmId: string) =>
     request<{ data: FilmDetailDto }>(
       `/groupbuy/hubs/${encodeURIComponent(hubId)}/films/${encodeURIComponent(filmId)}`,
     ),
-  joinGroupBuy: (hubId: string, filmId: string) =>
+  joinGroupBuy: (hubId: string, filmId: string, quantity: number) =>
     request<{ data: GroupProgressDto }>(
       `/groupbuy/hubs/${encodeURIComponent(hubId)}/films/${encodeURIComponent(filmId)}/join`,
+      { method: "POST", body: JSON.stringify({ quantity }) },
+    ),
+  payDeposit: (hubId: string, filmId: string) =>
+    request<{ data: GroupProgressDto }>(
+      `/groupbuy/hubs/${encodeURIComponent(hubId)}/films/${encodeURIComponent(filmId)}/pay-deposit`,
       { method: "POST" },
     ),
   getGroupProgress: (hubId: string, filmId: string) =>
@@ -87,4 +102,25 @@ export const api = {
       { method: "POST", body: form },
     )
   },
+
+  // ===== activity（活动与报名） =====
+  listActivities: () => request<{ data: ActivityDto[] }>("/activity/activities"),
+  listMyActivities: () => request<{ data: ActivityDto[] }>("/activity/mine"),
+  getActivity: (id: string) =>
+    request<{ data: ActivityDetailDto }>(`/activity/activities/${encodeURIComponent(id)}`),
+  createActivity: (input: CreateActivityInput) =>
+    request<{ data: ActivityDetailDto }>("/activity/activities", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  enrollActivity: (id: string) =>
+    request<{ data: ActivityDetailDto }>(
+      `/activity/activities/${encodeURIComponent(id)}/enroll`,
+      { method: "POST" },
+    ),
+  cancelActivity: (id: string) =>
+    request<{ data: ActivityDetailDto }>(
+      `/activity/activities/${encodeURIComponent(id)}/cancel`,
+      { method: "POST" },
+    ),
 }

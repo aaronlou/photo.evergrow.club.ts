@@ -1,16 +1,25 @@
 import { Effect, Layer } from "effect"
 import { FileSystem } from "@effect/platform"
 import { randomUUID } from "node:crypto"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
 
 import { PersistenceError } from "../../../shared/errors.js"
 import { ImageStorage } from "../domain/imageStorage.js"
 
 /**
- * 图片存储本地磁盘实现：上传文件归档到 <cwd>/uploads，
+ * 图片存储本地磁盘实现：上传文件归档到 <api 包>/uploads，
  * 通过 /api/groupbuy/images/:key 访问。生产可替换为 OSS/S3 实现。
  */
-export const uploadsDir = join(process.cwd(), "uploads")
+// 按模块位置解析（不依赖 cwd）：src/modules/groupbuy/infrastructure → 上溯 4 级到 api 包根
+export const uploadsDir = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "..",
+  "..",
+  "uploads",
+)
 
 const mapPersistence = <A, E>(self: Effect.Effect<A, E>): Effect.Effect<A, PersistenceError> =>
   self.pipe(

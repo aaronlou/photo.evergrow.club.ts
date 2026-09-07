@@ -46,10 +46,12 @@ export interface FilmDto {
   format: string
   iso: number
   process: string
+  coverImageUrl: string
   basePriceInCents: number
   groupBuyPriceInCents: number
   threshold: number
   memberCount: number
+  participantCount: number
   joinedByMe: boolean
   sampleImageCount: number
 }
@@ -68,13 +70,90 @@ export interface FilmDetailDto extends FilmDto {
   sampleImages: SampleImageDto[]
 }
 
+/** 商品目录项（不依赖位置点，无拼团进度字段） */
+export interface FilmCatalogDto {
+  id: string
+  name: string
+  brand: string
+  format: string
+  iso: number
+  process: string
+  coverImageUrl: string
+  basePriceInCents: number
+  groupBuyPriceInCents: number
+  threshold: number
+  sampleImageCount: number
+}
+
+/** 商品目录详情（不依赖位置点） */
+export interface FilmCatalogDetailDto extends FilmCatalogDto {
+  features: string[]
+  scenarios: string[]
+  sampleImages: SampleImageDto[]
+}
+
 /** 拼团进度 */
 export interface GroupProgressDto {
   hubId: string
   filmId: string
+  /** 累计件数（成团判定依据） */
   memberCount: number
+  /** 参与人数 */
+  participantCount: number
   threshold: number
   status: "Open" | "Succeeded"
+  /** 还差多少件成团 */
   remaining: number
   joinedByMe: boolean
+  /** 我的购买数量 */
+  myQuantity: number
+  /** 成交单价（成团价，单位：分） */
+  unitPriceInCents: number
+  /** 商品总金额（数量 × 单价） */
+  totalInCents: number
+  /** 订金（总金额 × 10%） */
+  depositInCents: number
+  depositPaid: boolean
+  /** 服务模式：货到付款 */
+  deliveryMode: "COD"
+}
+
+// ===== activity 上下文（活动与报名） =====
+
+/** 活动状态：NotStarted(未开始报名)/Open(报名中)/Full(已满)/Closed(已截止)/Ended(已结束) */
+export type ActivityStatusDto = "NotStarted" | "Open" | "Full" | "Closed" | "Ended"
+
+/** 活动列表项 */
+export interface ActivityDto {
+  id: string
+  name: string
+  coverImageUrl: string
+  location: string
+  startAt: string
+  endAt: string
+  capacity: number
+  participantCount: number
+  joinedByMe: boolean
+  status: ActivityStatusDto
+}
+
+/** 活动详情 */
+export interface ActivityDetailDto extends ActivityDto {
+  description: string
+  signupStartAt: string
+  signupEndAt: string
+  createdBy: string
+}
+
+/** 创建活动请求（日期为 ISO 字符串） */
+export interface CreateActivityInput {
+  name: string
+  description: string
+  location: string
+  coverImageUrl: string
+  startAt: string
+  endAt: string
+  signupStartAt: string
+  signupEndAt: string
+  capacity: number
 }

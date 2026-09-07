@@ -29,3 +29,13 @@ export class HubNotJoined extends Schema.TaggedError<HubNotJoined>("HubNotJoined
 export class AlreadyJoinedGroup extends Schema.TaggedError<AlreadyJoinedGroup>(
   "AlreadyJoinedGroup",
 )("AlreadyJoinedGroup", { hubId: HubId, filmId: FilmId }) {}
+
+export class NotJoinedGroup extends Schema.TaggedError<NotJoinedGroup>("NotJoinedGroup")(
+  "NotJoinedGroup",
+  { hubId: HubId, filmId: FilmId },
+) {}
+
+export class InvalidQuantity extends Schema.TaggedError<InvalidQuantity>("InvalidQuantity")(
+  "InvalidQuantity",
+  { quantity: Schema.Int },
+) {}

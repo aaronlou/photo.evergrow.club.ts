@@ -40,16 +40,40 @@ const failureOf = async <E>(program: Effect.Effect<unknown, E>): Promise<E> => {
 }
 
 describe("GroupBuy 聚合（领域规则）", () => {
-  it("达到成团人数后状态变为 Succeeded", () => {
+  it("按件数累计，达到 threshold 后状态变为 Succeeded", () => {
     const group = GroupBuy.open({ hubId: makeHubId("h1"), filmId: makeFilmId("f1") })
-      .join("u1", 3)
-      .join("u2", 3)
-    expect(group.status).toBe("Open")
-    expect(group.memberCount()).toBe(2)
+      .join("u1", 2, 100, 5)
+      .join("u2", 3, 100, 5)
+    expect(group.totalQuantity()).toBe(5)
+    expect(group.status).toBe("Succeeded")
+    expect(group.participantCount()).toBe(2)
+  })
 
-    const succeeded = group.join("u3", 3)
-    expect(succeeded.status).toBe("Succeeded")
-    expect(succeeded.memberCount()).toBe(3)
+  it("未达到 threshold 时为 Open", () => {
+    const group = GroupBuy.open({ hubId: makeHubId("h1"), filmId: makeFilmId("f1") })
+      .join("u1", 2, 100, 5)
+    expect(group.totalQuantity()).toBe(2)
+    expect(group.status).toBe("Open")
+  })
+
+  it("join 生成订单摘要：总价、订金(10%)、货到付款、未付订金", () => {
+    const group = GroupBuy.open({ hubId: makeHubId("h1"), filmId: makeFilmId("f1") })
+      .join("u1", 3, 4590, 5)
+    const p = group.participantOf("u1")!
+    expect(p.quantity).toBe(3)
+    expect(p.unitPriceInCents).toBe(4590)
+    expect(p.totalInCents).toBe(4590 * 3)
+    expect(p.depositInCents).toBe(Math.floor(4590 * 3 * 0.1))
+    expect(p.deliveryMode).toBe("COD")
+    expect(p.depositPaid).toBe(false)
+  })
+
+  it("markDepositPaid 标记订金已付（幂等）", () => {
+    const group = GroupBuy.open({ hubId: makeHubId("h1"), filmId: makeFilmId("f1") })
+      .join("u1", 2, 100, 5)
+      .markDepositPaid("u1")
+    expect(group.participantOf("u1")!.depositPaid).toBe(true)
+    expect(group.participantOf("u1")!.depositPaid).toBe(true)
   })
 })
 
@@ -69,32 +93,127 @@ describe("GroupBuyService 用例", () => {
       const service = yield* GroupBuyService
       return yield* service.joinGroupBuy(
         makeHubId("hub-sh-ja"),
-        makeFilmId("film-kodak-gold-200"),
+        makeFilmId("film-kodak-gold-200-135"),
         "user-a",
+        1,
       )
     })
     const failure = await failureOf(program)
     expect(failure._tag).toBe("HubNotJoined")
   })
 
-  it("加入心愿单后进度更新，重复加入会失败", async () => {
+  it("数量非法（<1）会失败", async () => {
     const program = Effect.gen(function* () {
       const service = yield* GroupBuyService
       yield* service.joinHub("user-a", makeHubId("hub-sh-ja"))
-      const first = yield* service.joinGroupBuy(
+      return yield* service.joinGroupBuy(
         makeHubId("hub-sh-ja"),
-        makeFilmId("film-kodak-gold-200"),
+        makeFilmId("film-kodak-gold-200-135"),
         "user-a",
+        0,
       )
-      const again = yield* service.joinGroupBuy(
+    })
+    const failure = await failureOf(program)
+    expect(failure._tag).toBe("InvalidQuantity")
+  })
+
+  it("加入心愿单（指定数量）后进度：件数/人数/订金正确", async () => {
+    const program = Effect.gen(function* () {
+      const service = yield* GroupBuyService
+      yield* service.joinHub("user-a", makeHubId("hub-sh-ja"))
+      return yield* service.joinGroupBuy(
         makeHubId("hub-sh-ja"),
-        makeFilmId("film-kodak-gold-200"),
+        makeFilmId("film-kodak-gold-200-135"),
         "user-a",
+        3,
       )
-      return { first, again }
+    }).pipe(Effect.provide(TestLive))
+
+    const progress = await Effect.runPromise(program)
+    expect(progress.memberCount).toBe(3)
+    expect(progress.participantCount).toBe(1)
+    expect(progress.joinedByMe).toBe(true)
+    expect(progress.myQuantity).toBe(3)
+    expect(progress.unitPriceInCents).toBe(4590)
+    expect(progress.totalInCents).toBe(4590 * 3)
+    expect(progress.depositInCents).toBe(Math.floor(4590 * 3 * 0.1))
+    expect(progress.deliveryMode).toBe("COD")
+    expect(progress.depositPaid).toBe(false)
+    expect(progress.status).toBe("Open")
+  })
+
+  it("重复加入心愿单会失败", async () => {
+    const program = Effect.gen(function* () {
+      const service = yield* GroupBuyService
+      yield* service.joinHub("user-a", makeHubId("hub-sh-ja"))
+      yield* service.joinGroupBuy(
+        makeHubId("hub-sh-ja"),
+        makeFilmId("film-kodak-gold-200-135"),
+        "user-a",
+        1,
+      )
+      return yield* service.joinGroupBuy(
+        makeHubId("hub-sh-ja"),
+        makeFilmId("film-kodak-gold-200-135"),
+        "user-a",
+        1,
+      )
     })
     const failure = await failureOf(program)
     expect(failure._tag).toBe("AlreadyJoinedGroup")
+  })
+
+  it("累计件数达到 threshold 即成团", async () => {
+    const program = Effect.gen(function* () {
+      const service = yield* GroupBuyService
+      yield* service.joinHub("user-a", makeHubId("hub-sh-ja"))
+      // gold 200 threshold=20，一次加入 20 件即成团
+      return yield* service.joinGroupBuy(
+        makeHubId("hub-sh-ja"),
+        makeFilmId("film-kodak-gold-200-135"),
+        "user-a",
+        20,
+      )
+    }).pipe(Effect.provide(TestLive))
+
+    const progress = await Effect.runPromise(program)
+    expect(progress.status).toBe("Succeeded")
+    expect(progress.remaining).toBe(0)
+  })
+
+  it("支付订金后 depositPaid 为 true", async () => {
+    const program = Effect.gen(function* () {
+      const service = yield* GroupBuyService
+      yield* service.joinHub("user-a", makeHubId("hub-sh-ja"))
+      yield* service.joinGroupBuy(
+        makeHubId("hub-sh-ja"),
+        makeFilmId("film-kodak-gold-200-135"),
+        "user-a",
+        2,
+      )
+      return yield* service.payDeposit(
+        makeHubId("hub-sh-ja"),
+        makeFilmId("film-kodak-gold-200-135"),
+        "user-a",
+      )
+    }).pipe(Effect.provide(TestLive))
+
+    const progress = await Effect.runPromise(program)
+    expect(progress.depositPaid).toBe(true)
+    expect(progress.depositInCents).toBe(Math.floor(4590 * 2 * 0.1))
+  })
+
+  it("未加入就支付订金会失败", async () => {
+    const program = Effect.gen(function* () {
+      const service = yield* GroupBuyService
+      return yield* service.payDeposit(
+        makeHubId("hub-sh-ja"),
+        makeFilmId("film-kodak-gold-200-135"),
+        "user-a",
+      )
+    })
+    const failure = await failureOf(program)
+    expect(failure._tag).toBe("NotJoinedGroup")
   })
 
   it("不同用户参团互不影响进度", async () => {
@@ -104,19 +223,22 @@ describe("GroupBuyService 用例", () => {
       yield* service.joinHub("user-b", makeHubId("hub-sh-ja"))
       yield* service.joinGroupBuy(
         makeHubId("hub-sh-ja"),
-        makeFilmId("film-kodak-gold-200"),
+        makeFilmId("film-kodak-gold-200-135"),
         "user-a",
+        2,
       )
       return yield* service.getProgress(
         makeHubId("hub-sh-ja"),
-        makeFilmId("film-kodak-gold-200"),
+        makeFilmId("film-kodak-gold-200-135"),
         "user-b",
       )
     }).pipe(Effect.provide(TestLive))
 
     const result = await Effect.runPromise(program)
-    expect(result.memberCount).toBe(1)
+    expect(result.memberCount).toBe(2)
+    expect(result.participantCount).toBe(1)
     expect(result.joinedByMe).toBe(false)
+    expect(result.myQuantity).toBe(0)
     expect(result.status).toBe("Open")
   })
 })

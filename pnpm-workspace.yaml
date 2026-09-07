@@ -7,3 +7,4 @@ allowBuilds:
   "@parcel/watcher": true
   esbuild: true
   msgpackr-extract: true
+  vue-demi: set this to true or false

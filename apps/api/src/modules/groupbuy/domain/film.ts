@@ -37,6 +37,8 @@ export class Film extends Schema.Class<Film>("Film")({
   iso: Schema.Int,
   /** 冲洗工艺：C-41 / E-6 / 黑白(D-76) 等 */
   process: Schema.String,
+  /** 商品封面图 */
+  coverImageUrl: Schema.String,
   features: Schema.Array(Schema.String),
   scenarios: Schema.Array(Schema.String),
   sampleImages: Schema.Array(SampleImage),
@@ -50,6 +52,7 @@ export class Film extends Schema.Class<Film>("Film")({
     format: FilmFormat
     iso: number
     process: string
+    coverImageUrl: string
     features: ReadonlyArray<string>
     scenarios: ReadonlyArray<string>
     sampleImages: ReadonlyArray<SampleImage>
@@ -63,6 +66,7 @@ export class Film extends Schema.Class<Film>("Film")({
       format: input.format,
       iso: input.iso,
       process: input.process,
+      coverImageUrl: input.coverImageUrl,
       features: input.features,
       scenarios: input.scenarios,
       sampleImages: input.sampleImages,

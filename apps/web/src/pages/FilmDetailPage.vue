@@ -6,6 +6,8 @@ import {
   NEmpty,
   NImage,
   NImageGroup,
+  NInputNumber,
+  NModal,
   NProgress,
   NSpin,
   NTag,
@@ -14,58 +16,133 @@ import {
   type UploadCustomRequestOptions,
 } from "naive-ui"
 
-import { api } from "@/api/client"
-import type { FilmDetailDto } from "@evergrow/contracts"
+import { api, ApiClientError } from "@/api/client"
+import { useHubStore } from "@/stores/hub"
+import type { FilmCatalogDetailDto, GroupProgressDto, HubDto } from "@evergrow/contracts"
 
 const route = useRoute()
 const router = useRouter()
 const message = useMessage()
+const hubStore = useHubStore()
 
-const hubId = route.params.hubId as string
 const filmId = route.params.filmId as string
+const routeHubId = typeof route.params.hubId === "string" ? (route.params.hubId as string) : null
+const selectedHubId = computed(() => hubStore.selectedHubId ?? routeHubId)
 
-const film = ref<FilmDetailDto | null>(null)
+const film = ref<FilmCatalogDetailDto | null>(null)
+const progress = ref<GroupProgressDto | null>(null)
+const quantity = ref(1)
 const loading = ref(true)
 const joining = ref(false)
+const paying = ref(false)
 const uploading = ref(false)
 const error = ref("")
 
+// 位置点选择
+const showHubPicker = ref(false)
+const hubPickerLoading = ref(false)
+const hubs = ref<HubDto[]>([])
+let pendingJoinAfterPick = false
+
 async function load() {
   try {
-    film.value = (await api.getFilm(hubId, filmId)).data
+    const filmRes = await api.getFilmById(filmId)
+    film.value = filmRes.data
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
-  } finally {
     loading.value = false
+    return
   }
+  await refreshProgress()
+  loading.value = false
 }
 
 async function refreshProgress() {
-  if (!film.value) return
+  const hubId = selectedHubId.value
+  if (!hubId) {
+    progress.value = null
+    return
+  }
   try {
     const { data } = await api.getGroupProgress(hubId, filmId)
-    film.value = { ...film.value, memberCount: data.memberCount, joinedByMe: data.joinedByMe }
+    progress.value = data
   } catch {
-    // 轮询失败静默处理，下一次重试
+    progress.value = null
+  }
+}
+
+async function openHubPicker() {
+  showHubPicker.value = true
+  hubPickerLoading.value = true
+  try {
+    hubs.value = (await api.listHubs()).data
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    hubPickerLoading.value = false
+  }
+}
+
+async function chooseHub(hub: HubDto) {
+  try {
+    await hubStore.selectHub(hub.id)
+    showHubPicker.value = false
+    message.success(`已选择位置点：${hub.name}`)
+    await refreshProgress()
+    if (pendingJoinAfterPick) {
+      pendingJoinAfterPick = false
+      await joinGroupBuy()
+    }
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+    message.error(error.value)
   }
 }
 
 async function joinGroupBuy() {
+  const hubId = selectedHubId.value
+  if (!hubId) {
+    pendingJoinAfterPick = true
+    await openHubPicker()
+    return
+  }
   joining.value = true
   error.value = ""
   try {
-    const { data } = await api.joinGroupBuy(hubId, filmId)
-    if (film.value) {
-      film.value = { ...film.value, memberCount: data.memberCount, joinedByMe: data.joinedByMe }
-    }
-    message.success("已加入团购心愿单，成团后将通知你")
+    const { data } = await api.joinGroupBuy(hubId, filmId, quantity.value)
+    progress.value = data
+    message.success("已加入拼单，成团后将通知你")
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
-    if (error.value.includes("加入位置点")) {
-      message.warning("请先回到位置点页面加入该位置点")
+    if (e instanceof ApiClientError && e.body?.code === "HubNotJoined") {
+      pendingJoinAfterPick = true
+      await openHubPicker()
+    } else {
+      message.error(error.value)
     }
   } finally {
     joining.value = false
+  }
+}
+
+async function payDeposit() {
+  const hubId = selectedHubId.value
+  if (!hubId) {
+    pendingJoinAfterPick = true
+    await openHubPicker()
+    return
+  }
+  paying.value = true
+  error.value = ""
+  try {
+    const { data } = await api.payDeposit(hubId, filmId)
+    progress.value = data
+    message.success("订金已支付（模拟，货到付款）")
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+    message.error(error.value)
+  } finally {
+    paying.value = false
   }
 }
 
@@ -90,12 +167,22 @@ async function handleUpload({ file, onFinish, onError }: UploadCustomRequestOpti
 }
 
 const yuan = (cents: number) => `¥${(cents / 100).toFixed(1)}`
+const memberCount = computed(() => progress.value?.memberCount ?? 0)
+const participantCount = computed(() => progress.value?.participantCount ?? 0)
+const joinedByMe = computed(() => progress.value?.joinedByMe ?? false)
+const threshold = computed(() => film.value?.threshold ?? 0)
 const percent = computed(() =>
-  film.value ? Math.min(100, Math.round((film.value.memberCount / film.value.threshold) * 100)) : 0,
+  threshold.value ? Math.min(100, Math.round((memberCount.value / threshold.value) * 100)) : 0,
 )
-const remaining = computed(() =>
-  film.value ? Math.max(0, film.value.threshold - film.value.memberCount) : 0,
-)
+const remaining = computed(() => Math.max(0, threshold.value - memberCount.value))
+const unitPrice = computed(() => film.value?.groupBuyPriceInCents ?? 0)
+const previewTotal = computed(() => unitPrice.value * quantity.value)
+const previewDeposit = computed(() => Math.floor(previewTotal.value * 0.1))
+const orderUnit = computed(() => progress.value?.unitPriceInCents ?? unitPrice.value)
+const orderQty = computed(() => progress.value?.myQuantity ?? quantity.value)
+const orderTotal = computed(() => progress.value?.totalInCents ?? previewTotal.value)
+const orderDeposit = computed(() => progress.value?.depositInCents ?? previewDeposit.value)
+const orderPaid = computed(() => progress.value?.depositPaid ?? false)
 
 // 拼团进度轮询（等待达到成团数量）
 let timer: ReturnType<typeof setInterval> | undefined
@@ -108,53 +195,91 @@ onUnmounted(() => clearInterval(timer))
 
 <template>
   <div class="page">
-    <n-button size="small" text @click="router.push(`/groups/${hubId}`)">
-      ← 返回商品列表
-    </n-button>
+    <n-button size="small" text @click="router.push('/films')">← 返回选胶卷</n-button>
 
     <n-spin :show="loading">
       <template v-if="film">
-        <div class="detail-head">
-          <div>
-            <h2 class="page-title">{{ film.name }}</h2>
-            <p class="film-brand">
-              {{ film.brand }} · {{ film.format }} 画幅 · ISO {{ film.iso }} · {{ film.process }}
-            </p>
+        <div class="detail-hero">
+          <div class="detail-cover">
+            <img :src="film.coverImageUrl" :alt="film.name" />
           </div>
-          <div class="detail-price">
-            <span class="price-deal big">{{ yuan(film.groupBuyPriceInCents) }}</span>
-            <span class="price-origin">{{ yuan(film.basePriceInCents) }}</span>
-            <span class="price-save">
-              团购省 {{ yuan(film.basePriceInCents - film.groupBuyPriceInCents) }}
-            </span>
+          <div class="detail-info">
+            <div class="tag-row detail-tags">
+              <n-tag type="success" round>{{ film.format }} 画幅</n-tag>
+              <n-tag type="info" round>ISO {{ film.iso }}</n-tag>
+              <n-tag type="info" round>{{ film.process }}</n-tag>
+            </div>
+            <h2 class="detail-name">{{ film.name }}</h2>
+            <p class="film-brand">{{ film.brand }}</p>
+            <div class="detail-prices">
+              <span class="price-deal big">{{ yuan(film.groupBuyPriceInCents) }}</span>
+              <span class="price-origin">{{ yuan(film.basePriceInCents) }}</span>
+              <span class="price-save">
+                拼团省 {{ yuan(film.basePriceInCents - film.groupBuyPriceInCents) }}
+              </span>
+            </div>
+
+            <!-- 未选位置点：提示选择 -->
+            <div v-if="!selectedHubId" class="hub-gate">
+              <p class="hub-gate-text">参与拼团前，先选一个位置点（取货/成团点）</p>
+              <n-button type="primary" size="large" block @click="openHubPicker">
+                选择位置点参与拼团
+              </n-button>
+            </div>
+
+            <!-- 已选位置点：进度 + 拼单 -->
+            <div v-else>
+              <div class="hub-current">
+                <n-tag type="success" round>位置点已选</n-tag>
+                <n-button size="tiny" text @click="openHubPicker">切换位置点</n-button>
+              </div>
+              <div class="detail-progress">
+                <n-progress type="line" :percentage="percent" :height="10" status="success" />
+                <p class="progress-text">
+                  <template v-if="remaining > 0">
+                    已有 {{ memberCount }} 件 · {{ participantCount }} 人参与，还差
+                    {{ remaining }} 件成团（需满 {{ threshold }} 件）
+                  </template>
+                  <template v-else>已达 {{ threshold }} 件，本团已成立 🎉</template>
+                </p>
+              </div>
+
+              <div v-if="joinedByMe" class="detail-order">
+                <p class="order-title">我的拼单（货到付款）</p>
+                <div class="order-rows">
+                  <div class="order-row"><span>数量</span><span>×{{ orderQty }}</span></div>
+                  <div class="order-row"><span>成交单价</span><span>¥{{ (orderUnit / 100).toFixed(2) }}</span></div>
+                  <div class="order-row"><span>商品总金额</span><span>¥{{ (orderTotal / 100).toFixed(2) }}</span></div>
+                  <div class="order-row"><span>订金（10%）</span><span>¥{{ (orderDeposit / 100).toFixed(2) }}</span></div>
+                  <div class="order-row"><span>服务模式</span><span>货到付款</span></div>
+                </div>
+                <n-button
+                  v-if="!orderPaid"
+                  type="warning"
+                  block
+                  :loading="paying"
+                  @click="payDeposit"
+                >
+                  支付订金 ¥{{ (orderDeposit / 100).toFixed(2) }}（模拟）
+                </n-button>
+                <n-tag v-else type="success" round>订金已付</n-tag>
+              </div>
+
+              <div v-else class="detail-join">
+                <div class="detail-join-row">
+                  <span class="detail-qty-label">数量</span>
+                  <n-input-number v-model:value="quantity" :min="1" :max="99" class="detail-qty" />
+                </div>
+                <p class="detail-total">
+                  预估总价 {{ yuan(previewTotal) }} · 订金 {{ yuan(previewDeposit) }}（10%）
+                </p>
+                <n-button type="primary" size="large" block :loading="joining" @click="joinGroupBuy">
+                  加入拼单（数量 ×{{ quantity }}）
+                </n-button>
+              </div>
+            </div>
           </div>
         </div>
-
-        <section class="detail-section">
-          <h3>团购进度</h3>
-          <n-progress
-            type="line"
-            :percentage="percent"
-            :height="12"
-            status="success"
-          />
-          <p class="progress-text">
-            <template v-if="remaining > 0">
-              已有 {{ film.memberCount }} 人加入，还差 {{ remaining }} 人成团（需满
-              {{ film.threshold }} 人）
-            </template>
-            <template v-else>已达 {{ film.threshold }} 人，本团已成立 🎉</template>
-          </p>
-          <n-button
-            type="primary"
-            size="large"
-            :disabled="film.joinedByMe"
-            :loading="joining"
-            @click="joinGroupBuy"
-          >
-            {{ film.joinedByMe ? "已加入心愿单" : "加入团购心愿单" }}
-          </n-button>
-        </section>
 
         <section class="detail-section">
           <h3>胶卷特性</h3>
@@ -207,5 +332,34 @@ onUnmounted(() => clearInterval(timer))
 
       <n-empty v-if="!loading && !film" :description="error || '未找到该商品'" />
     </n-spin>
+
+    <!-- 位置点选择弹窗 -->
+    <n-modal
+      v-model:show="showHubPicker"
+      preset="card"
+      title="选择位置点"
+      :bordered="false"
+      style="width: 90%; max-width: 520px"
+    >
+      <n-spin :show="hubPickerLoading">
+        <div class="hub-picker-list">
+          <button
+            v-for="hub in hubs"
+            :key="hub.id"
+            type="button"
+            class="hub-picker-item"
+            @click="chooseHub(hub)"
+          >
+            <div class="hub-picker-head">
+              <span class="hub-name">{{ hub.name }}</span>
+              <n-tag v-if="hub.joinedByMe" type="success" size="small" round>已加入</n-tag>
+            </div>
+            <p class="hub-addr">{{ hub.city }} · {{ hub.address }}</p>
+            <p class="hub-meta">{{ hub.memberCount }} 人已加入</p>
+          </button>
+          <n-empty v-if="!hubPickerLoading && hubs.length === 0" description="暂无可选位置点" />
+        </div>
+      </n-spin>
+    </n-modal>
   </div>
 </template>

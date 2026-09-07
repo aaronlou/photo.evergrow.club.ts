@@ -18,10 +18,32 @@ const router = createRouter({
         },
         {
           path: "groups/:hubId/films/:filmId",
+          name: "film-detail-hub",
+          component: () => import("@/pages/FilmDetailPage.vue"),
+        },
+        { path: "films", name: "films", component: () => import("@/pages/FilmListPage.vue") },
+        {
+          path: "films/:filmId",
           name: "film-detail",
           component: () => import("@/pages/FilmDetailPage.vue"),
         },
+        { path: "activities", name: "activities", component: () => import("@/pages/ActivityListPage.vue") },
+        {
+          path: "activities/new",
+          name: "activity-create",
+          component: () => import("@/pages/ActivityCreatePage.vue"),
+        },
+        {
+          path: "activities/:id",
+          name: "activity-detail",
+          component: () => import("@/pages/ActivityDetailPage.vue"),
+        },
         { path: "me", name: "me", component: () => import("@/pages/UserProfilePage.vue") },
+        {
+          path: "me/activities",
+          name: "my-activities",
+          component: () => import("@/pages/MyActivitiesPage.vue"),
+        },
       ],
     },
     { path: "/:pathMatch(.*)*", redirect: "/" },

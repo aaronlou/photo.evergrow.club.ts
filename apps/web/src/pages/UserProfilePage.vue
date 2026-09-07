@@ -13,7 +13,7 @@ async function demoRegister() {
   loading.value = true
   error.value = ""
   try {
-    const { data } = await api.register({ phone: "13800138000", nickname: "拾光用户" })
+    const { data } = await api.register({ phone: "13800138000", nickname: "摄影团团用户" })
     profile.value = data
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)

@@ -40,10 +40,12 @@ export const FilmDto = Schema.Struct({
   format: Schema.String,
   iso: Schema.Int,
   process: Schema.String,
+  coverImageUrl: Schema.String,
   basePriceInCents: Schema.Int,
   groupBuyPriceInCents: Schema.Int,
   threshold: Schema.Int,
   memberCount: Schema.Int,
+  participantCount: Schema.Int,
   joinedByMe: Schema.Boolean,
   sampleImageCount: Schema.Int,
 })
@@ -57,14 +59,45 @@ export const FilmDetailDto = Schema.Struct({
 })
 export type FilmDetailDto = Schema.Schema.Type<typeof FilmDetailDto>
 
+/** 商品目录项（不依赖位置点，无拼团进度字段） */
+export const FilmCatalogDto = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  brand: Schema.String,
+  format: Schema.String,
+  iso: Schema.Int,
+  process: Schema.String,
+  coverImageUrl: Schema.String,
+  basePriceInCents: Schema.Int,
+  groupBuyPriceInCents: Schema.Int,
+  threshold: Schema.Int,
+  sampleImageCount: Schema.Int,
+})
+export type FilmCatalogDto = Schema.Schema.Type<typeof FilmCatalogDto>
+
+export const FilmCatalogDetailDto = Schema.Struct({
+  ...FilmCatalogDto.fields,
+  features: Schema.Array(Schema.String),
+  scenarios: Schema.Array(Schema.String),
+  sampleImages: Schema.Array(SampleImageDto),
+})
+export type FilmCatalogDetailDto = Schema.Schema.Type<typeof FilmCatalogDetailDto>
+
 export const GroupProgressDto = Schema.Struct({
   hubId: Schema.String,
   filmId: Schema.String,
   memberCount: Schema.Int,
+  participantCount: Schema.Int,
   threshold: Schema.Int,
   status: Schema.String,
   remaining: Schema.Int,
   joinedByMe: Schema.Boolean,
+  myQuantity: Schema.Int,
+  unitPriceInCents: Schema.Int,
+  totalInCents: Schema.Int,
+  depositInCents: Schema.Int,
+  depositPaid: Schema.Boolean,
+  deliveryMode: Schema.Literal("COD"),
 })
 export type GroupProgressDto = Schema.Schema.Type<typeof GroupProgressDto>
 
@@ -86,10 +119,12 @@ export const toFilmDto = (film: Film, progress: GroupProgress): FilmDto => ({
   format: film.format,
   iso: film.iso,
   process: film.process,
+  coverImageUrl: film.coverImageUrl,
   basePriceInCents: film.basePriceInCents,
   groupBuyPriceInCents: film.deal.groupBuyPriceInCents,
   threshold: film.deal.threshold,
   memberCount: progress.memberCount,
+  participantCount: progress.participantCount,
   joinedByMe: progress.joinedByMe,
   sampleImageCount: film.sampleImages.length,
 })
@@ -101,14 +136,42 @@ export const toFilmDetailDto = (film: Film, progress: GroupProgress): FilmDetail
   sampleImages: film.sampleImages,
 })
 
+export const toFilmCatalogDto = (film: Film): FilmCatalogDto => ({
+  id: film.id,
+  name: film.name,
+  brand: film.brand,
+  format: film.format,
+  iso: film.iso,
+  process: film.process,
+  coverImageUrl: film.coverImageUrl,
+  basePriceInCents: film.basePriceInCents,
+  groupBuyPriceInCents: film.deal.groupBuyPriceInCents,
+  threshold: film.deal.threshold,
+  sampleImageCount: film.sampleImages.length,
+})
+
+export const toFilmCatalogDetailDto = (film: Film): FilmCatalogDetailDto => ({
+  ...toFilmCatalogDto(film),
+  features: film.features,
+  scenarios: film.scenarios,
+  sampleImages: film.sampleImages,
+})
+
 export const toProgressDto = (progress: GroupProgress): GroupProgressDto => ({
   hubId: progress.hubId,
   filmId: progress.filmId,
   memberCount: progress.memberCount,
+  participantCount: progress.participantCount,
   threshold: progress.threshold,
   status: progress.status,
-  remaining: Math.max(0, progress.threshold - progress.memberCount),
+  remaining: progress.remaining,
   joinedByMe: progress.joinedByMe,
+  myQuantity: progress.myQuantity,
+  unitPriceInCents: progress.unitPriceInCents,
+  totalInCents: progress.totalInCents,
+  depositInCents: progress.depositInCents,
+  depositPaid: progress.depositPaid,
+  deliveryMode: progress.deliveryMode,
 })
 
 // ===== HTTP API =====
@@ -116,7 +179,7 @@ export const toProgressDto = (progress: GroupProgress): GroupProgressDto => ({
 /** 样片上传（multipart：file 部分为图片文件） */
 const UploadPayload = HttpApiSchema.Multipart(
   Schema.Struct({
-    file: Multipart.FileSchema,
+    file: Multipart.SingleFileSchema,
   }),
 )
 
@@ -146,7 +209,25 @@ export const GroupBuyApi = HttpApiGroup.make("groupbuy")
       .addError(ApiError),
   )
   .add(
+    HttpApiEndpoint.get("listAllFilms", "/films")
+      .addSuccess(Schema.Struct({ data: Schema.Array(FilmCatalogDto) }))
+      .addError(ApiError),
+  )
+  .add(
+    HttpApiEndpoint.get("getFilmById", "/films/:filmId")
+      .setPath(Schema.Struct({ filmId: Schema.String }))
+      .addSuccess(Schema.Struct({ data: FilmCatalogDetailDto }))
+      .addError(ApiError),
+  )
+  .add(
     HttpApiEndpoint.post("joinGroupBuy", "/hubs/:hubId/films/:filmId/join")
+      .setPath(Schema.Struct({ hubId: Schema.String, filmId: Schema.String }))
+      .setPayload(Schema.Struct({ quantity: Schema.Int }))
+      .addSuccess(Schema.Struct({ data: GroupProgressDto }))
+      .addError(ApiError),
+  )
+  .add(
+    HttpApiEndpoint.post("payDeposit", "/hubs/:hubId/films/:filmId/pay-deposit")
       .setPath(Schema.Struct({ hubId: Schema.String, filmId: Schema.String }))
       .addSuccess(Schema.Struct({ data: GroupProgressDto }))
       .addError(ApiError),
@@ -165,7 +246,17 @@ export const GroupBuyApi = HttpApiGroup.make("groupbuy")
       .addError(ApiError),
   )
   .add(
-    HttpApiEndpoint.get("getImage", "/images/:key")
+    HttpApiEndpoint.get("getUploadedImage", "/images/:key")
+      .setPath(Schema.Struct({ key: Schema.String }))
+      .addError(ApiError),
+  )
+  .add(
+    HttpApiEndpoint.get("getFilmCover", "/images/films/:key")
+      .setPath(Schema.Struct({ key: Schema.String }))
+      .addError(ApiError),
+  )
+  .add(
+    HttpApiEndpoint.get("getDemoImage", "/images/demo/:key")
       .setPath(Schema.Struct({ key: Schema.String }))
       .addError(ApiError),
   )
