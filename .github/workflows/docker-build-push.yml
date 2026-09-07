@@ -75,6 +75,9 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/amd64,linux/arm64
+          # 仅构建 amd64：arm64 需 QEMU 模拟编译，api 镜像会慢到 30 分钟+
+          # 如需 arm64（如 ARM 服务器部署），改回 linux/amd64,linux/arm64
+          # 并在 Set up Docker Buildx 前加 setup-qemu-action 步骤
+          platforms: linux/amd64
           cache-from: type=gha
           cache-to: type=gha,mode=max
