@@ -55,6 +55,7 @@ export class Film extends Schema.Class<Film>("Film")({
     iso: number
     process: string
     coverImageUrl: string
+    description?: string
     features: ReadonlyArray<string>
     scenarios: ReadonlyArray<string>
     sampleImages: ReadonlyArray<SampleImage>
@@ -69,6 +70,7 @@ export class Film extends Schema.Class<Film>("Film")({
       iso: input.iso,
       process: input.process,
       coverImageUrl: input.coverImageUrl,
+      description: input.description ?? "",
       features: input.features,
       scenarios: input.scenarios,
       sampleImages: input.sampleImages,

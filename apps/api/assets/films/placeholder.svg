@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480" viewBox="0 0 640 480">
+  <defs>
+    <pattern id="sprockets" x="0" y="0" width="40" height="34" patternUnits="userSpaceOnUse">
+      <rect x="9" y="10" width="22" height="14" rx="3" fill="#f2f2f2" opacity="0.85" />
+    </pattern>
+  </defs>
+  <rect width="640" height="480" fill="#20241f" />
+  <rect y="18" width="640" height="34" fill="url(#sprockets)" />
+  <rect y="428" width="640" height="34" fill="url(#sprockets)" />
+  <rect y="72" width="640" height="336" fill="#2a2f27" />
+  <text x="320" y="248" text-anchor="middle" fill="#8b968b" font-family="sans-serif" font-size="26">
+    暂无封面图
+  </text>
+  <text x="320" y="284" text-anchor="middle" fill="#6f7a70" font-family="sans-serif" font-size="16">
+    可在管理端上传
+  </text>
+</svg>

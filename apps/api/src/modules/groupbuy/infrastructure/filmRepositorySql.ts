@@ -101,15 +101,18 @@ export const FilmRepositorySql = Layer.effect(
         ).pipe(Effect.asVoid),
     })
 
-    // 首次启动（空表）：写入种子数据，保证 SQL 模式与内存模式商品目录一致。
-    // 初始化失败（如表未建，迁移未跑）只告警不中断启动，避免整个服务崩溃循环。
-    yield* query(sql`SELECT COUNT(*)::int AS count FROM groupbuy_films`).pipe(
-      Effect.map((rows) => (rows as unknown as ReadonlyArray<{ count: number }>)[0]?.count ?? 0),
-      Effect.flatMap((count) =>
-        count === 0
-          ? Effect.forEach(seedFilms(), (film) => repo.save(film), { discard: true })
-          : Effect.void,
-      ),
+    // 种子数据：按 ID 补齐尚未入库的商品（空表则全量写入）。
+    // 已存在的记录不覆盖，保留管理端与用户的编辑结果；新品上架由此生效。
+    // 失败只告警不中断启动（如表未建，迁移未跑）。
+    yield* findAll.pipe(
+      Effect.map((existing) => new Set(existing.map((f) => String(f.id)))),
+      Effect.flatMap((existingIds) => {
+        const missing = seedFilms().filter((f) => !existingIds.has(String(f.id)))
+        if (missing.length === 0) return Effect.void
+        return Effect.forEach(missing, (film) => repo.save(film), { discard: true }).pipe(
+          Effect.tap(Effect.logInfo(`film 表补齐种子数据 ${missing.length} 条`)),
+        )
+      }),
       Effect.tapError((e) =>
         Effect.logWarning(`film 表种子数据初始化失败（请检查迁移是否执行）: ${e.message}`),
       ),
