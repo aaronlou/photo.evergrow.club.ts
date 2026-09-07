@@ -15,12 +15,11 @@ const query = <A, E>(self: Effect.Effect<A, E>): Effect.Effect<A, PersistenceErr
     ),
   )
 
-const FILM_COLUMNS = `id, name, brand, format, iso, process, cover_image_url, description, features, scenarios, sample_images, base_price_in_cents, threshold, group_buy_price_in_cents`
-
 /**
  * FilmRepository SQL 实现（Effect SQL + PostgreSQL）。
  * 表结构见 migrations/0003_groupbuy_films.sql。
  * 首次启动（空表）时写入内存仓储同款种子数据；管理员编辑通过 save 持久化。
+ * 注意：列名必须写成 SQL 字面量——sql`` 模板中的 JS 插值会被当作参数占位符。
  */
 export const FilmRepositorySql = Layer.effect(
   FilmRepository,
@@ -62,9 +61,9 @@ export const FilmRepositorySql = Layer.effect(
         },
       })
 
-    const findAll = query(
-      sql`SELECT ${FILM_COLUMNS} FROM groupbuy_films`,
-    ).pipe(
+    const FILM_SELECT = `SELECT id, name, brand, format, iso, process, cover_image_url, description, features, scenarios, sample_images, base_price_in_cents, threshold, group_buy_price_in_cents FROM groupbuy_films`
+
+    const findAll = query(sql.unsafe(FILM_SELECT)).pipe(
       Effect.map((rows) =>
         (rows as unknown as ReadonlyArray<Parameters<typeof toFilm>[0]>).map(toFilm),
       ),
@@ -74,9 +73,7 @@ export const FilmRepositorySql = Layer.effect(
       findAll: () => findAll,
 
       findById: (id): Effect.Effect<Option.Option<Film>, PersistenceError> =>
-        query(
-          sql`SELECT ${FILM_COLUMNS} FROM groupbuy_films WHERE id = ${id}`,
-        ).pipe(
+        query(sql`${sql.literal(FILM_SELECT)} WHERE id = ${id}`).pipe(
           Effect.map((rows) => {
             const row = (rows as unknown as ReadonlyArray<Parameters<typeof toFilm>[0]>)[0]
             return row ? Option.some(toFilm(row)) : Option.none()
@@ -86,7 +83,7 @@ export const FilmRepositorySql = Layer.effect(
       save: (film): Effect.Effect<void, PersistenceError> =>
         query(
           sql`INSERT INTO groupbuy_films (id, name, brand, format, iso, process, cover_image_url, description, features, scenarios, sample_images, base_price_in_cents, threshold, group_buy_price_in_cents)
-              VALUES (${film.id}, ${film.name}, ${film.brand}, ${film.format}, ${film.iso}, ${film.process}, ${film.coverImageUrl}, ${film.description}, ${film.features}, ${film.scenarios}, ${film.sampleImages}, ${film.basePriceInCents}, ${film.deal.threshold}, ${film.deal.groupBuyPriceInCents})
+              VALUES (${film.id}, ${film.name}, ${film.brand}, ${film.format}, ${film.iso}, ${film.process}, ${film.coverImageUrl}, ${film.description}, ${JSON.stringify(film.features)}::jsonb, ${JSON.stringify(film.scenarios)}::jsonb, ${JSON.stringify(film.sampleImages)}::jsonb, ${film.basePriceInCents}, ${film.deal.threshold}, ${film.deal.groupBuyPriceInCents})
               ON CONFLICT (id) DO UPDATE SET
                 name = EXCLUDED.name,
                 brand = EXCLUDED.brand,
