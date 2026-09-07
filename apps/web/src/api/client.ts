@@ -1,4 +1,13 @@
-import type { ApiErrorDto, HealthDto, UserDto } from "@evergrow/contracts"
+import type {
+  ApiErrorDto,
+  FilmDetailDto,
+  FilmDto,
+  GroupProgressDto,
+  HealthDto,
+  HubDto,
+  SampleImageDto,
+  UserDto,
+} from "@evergrow/contracts"
 
 /** API 请求错误：携带 HTTP 状态码与后端 ApiErrorDto */
 export class ApiClientError extends Error {
@@ -11,11 +20,27 @@ export class ApiClientError extends Error {
   }
 }
 
+/**
+ * 当前用户身份（占位实现）：localStorage 生成稳定的匿名用户 ID，
+ * 通过 x-user-id 请求头传给后端。接入微信登录后替换。
+ */
+const STORAGE_KEY = "evergrow-user-id"
+
+function currentUserId(): string {
+  let id = localStorage.getItem(STORAGE_KEY)
+  if (!id) {
+    id = crypto.randomUUID()
+    localStorage.setItem(STORAGE_KEY, id)
+  }
+  return id
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    headers: { "Content-Type": "application/json" },
-    ...init,
-  })
+  const headers: Record<string, string> = { "x-user-id": currentUserId() }
+  if (!(init?.body instanceof FormData)) {
+    headers["Content-Type"] = "application/json"
+  }
+  const res = await fetch(`/api${path}`, { ...init, headers })
   const body: unknown = await res.json().catch(() => null)
   if (!res.ok) {
     throw new ApiClientError(res.status, body as ApiErrorDto | null)
@@ -32,4 +57,34 @@ export const api = {
       method: "POST",
       body: JSON.stringify(input),
     }),
+
+  // ===== groupbuy（胶卷团购） =====
+  listHubs: () => request<{ data: HubDto[] }>("/groupbuy/hubs"),
+  joinHub: (id: string) =>
+    request<{ data: HubDto }>(`/groupbuy/hubs/${encodeURIComponent(id)}/join`, {
+      method: "POST",
+    }),
+  listFilms: (hubId: string) =>
+    request<{ data: FilmDto[] }>(`/groupbuy/hubs/${encodeURIComponent(hubId)}/films`),
+  getFilm: (hubId: string, filmId: string) =>
+    request<{ data: FilmDetailDto }>(
+      `/groupbuy/hubs/${encodeURIComponent(hubId)}/films/${encodeURIComponent(filmId)}`,
+    ),
+  joinGroupBuy: (hubId: string, filmId: string) =>
+    request<{ data: GroupProgressDto }>(
+      `/groupbuy/hubs/${encodeURIComponent(hubId)}/films/${encodeURIComponent(filmId)}/join`,
+      { method: "POST" },
+    ),
+  getGroupProgress: (hubId: string, filmId: string) =>
+    request<{ data: GroupProgressDto }>(
+      `/groupbuy/hubs/${encodeURIComponent(hubId)}/films/${encodeURIComponent(filmId)}/progress`,
+    ),
+  uploadSampleImage: (filmId: string, file: File) => {
+    const form = new FormData()
+    form.append("file", file)
+    return request<{ data: SampleImageDto }>(
+      `/groupbuy/films/${encodeURIComponent(filmId)}/images`,
+      { method: "POST", body: form },
+    )
+  },
 }

@@ -11,6 +11,16 @@ const router = createRouter({
       children: [
         { path: "", name: "home", component: () => import("@/pages/HomePage.vue") },
         { path: "groups", name: "groups", component: () => import("@/pages/GroupBuyListPage.vue") },
+        {
+          path: "groups/:hubId",
+          name: "group-hub",
+          component: () => import("@/pages/GroupBuyHubPage.vue"),
+        },
+        {
+          path: "groups/:hubId/films/:filmId",
+          name: "film-detail",
+          component: () => import("@/pages/FilmDetailPage.vue"),
+        },
         { path: "me", name: "me", component: () => import("@/pages/UserProfilePage.vue") },
       ],
     },

@@ -1,6 +1,7 @@
 import { HttpApi } from "@effect/platform"
 
 import { HealthApi } from "./interface/healthApi.js"
+import { GroupBuyApi } from "./modules/groupbuy/interface/groupBuyApi.js"
 import { IdentityApi } from "./modules/identity/interface/identityApi.js"
 
 /**
@@ -10,4 +11,5 @@ import { IdentityApi } from "./modules/identity/interface/identityApi.js"
 export const Api = HttpApi.make("EvergrowApi")
   .add(HealthApi.prefix("/health"))
   .add(IdentityApi.prefix("/identity"))
+  .add(GroupBuyApi.prefix("/groupbuy"))
   .prefix("/api")
