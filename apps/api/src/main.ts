@@ -285,6 +285,13 @@ const AdminGroupLive = HttpApiBuilder.group(Api, "admin", (handlers) =>
   Effect.gen(function* () {
     const groupBuy = yield* GroupBuyService
     return handlers
+      .handle("createFilm", ({ request, payload }) =>
+        requireAdmin(request).pipe(
+          Effect.andThen(() => groupBuy.createFilm(payload)),
+          Effect.map((film) => ({ data: toFilmCatalogDetailDto(film) })),
+          Effect.mapError(toAdminError),
+        ),
+      )
       .handle("updateFilm", ({ path, request, payload }) =>
         requireAdmin(request).pipe(
           Effect.andThen(() => groupBuy.updateFilm(makeFilmId(path.filmId), payload)),

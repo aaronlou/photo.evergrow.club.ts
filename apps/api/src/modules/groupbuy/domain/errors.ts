@@ -39,3 +39,8 @@ export class InvalidQuantity extends Schema.TaggedError<InvalidQuantity>("Invali
   "InvalidQuantity",
   { quantity: Schema.Int },
 ) {}
+
+/** 商品 ID 已存在（管理端新增商品时同名 slug 冲突） */
+export class FilmAlreadyExists extends Schema.TaggedError<FilmAlreadyExists>(
+  "FilmAlreadyExists",
+)("FilmAlreadyExists", { filmId: FilmId }) {}

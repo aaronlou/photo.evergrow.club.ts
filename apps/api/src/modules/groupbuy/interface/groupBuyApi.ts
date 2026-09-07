@@ -298,7 +298,30 @@ const AdminCoverUploadPayload = HttpApiSchema.Multipart(
   }),
 )
 
+/** [管理端] 新增商品的必填/选填字段（ID 由服务端生成） */
+const AdminCreateFilmPayload = Schema.Struct({
+  name: Schema.String,
+  brand: Schema.String,
+  format: Schema.Literal("135", "120"),
+  iso: Schema.Int,
+  process: Schema.String,
+  basePriceInCents: Schema.Int,
+  threshold: Schema.Int,
+  groupBuyPriceInCents: Schema.Int,
+  coverImageUrl: Schema.optional(Schema.String),
+  description: Schema.optional(Schema.String),
+  features: Schema.optional(Schema.Array(Schema.String)),
+  scenarios: Schema.optional(Schema.Array(Schema.String)),
+})
+
 export const AdminApi = HttpApiGroup.make("admin")
+  .add(
+    HttpApiEndpoint.post("createFilm", "/groupbuy/films")
+      .setPayload(AdminCreateFilmPayload)
+      .addSuccess(Schema.Struct({ data: FilmCatalogDetailDto }))
+      .addError(ApiError)
+      .addError(UnauthorizedError),
+  )
   .add(
     HttpApiEndpoint.patch("updateFilm", "/groupbuy/films/:filmId")
       .setPath(Schema.Struct({ filmId: Schema.String }))

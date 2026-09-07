@@ -5,6 +5,8 @@ import {
   NDynamicTags,
   NEmpty,
   NInput,
+  NInputNumber,
+  NModal,
   NP,
   NSelect,
   NSpin,
@@ -105,6 +107,74 @@ async function load() {
   }
 }
 
+// ===== 新增商品 =====
+const showCreate = ref(false)
+const creating = ref(false)
+const newFilm = ref({
+  name: "",
+  brand: "",
+  format: "135" as "135" | "120",
+  iso: 200,
+  process: "C-41",
+  description: "",
+  features: [] as string[],
+  scenarios: [] as string[],
+  basePriceYuan: 50,
+  groupBuyPriceYuan: 40,
+  threshold: 20,
+})
+
+function openCreate() {
+  newFilm.value = {
+    name: "",
+    brand: "",
+    format: "135",
+    iso: 200,
+    process: "C-41",
+    description: "",
+    features: [],
+    scenarios: [],
+    basePriceYuan: 50,
+    groupBuyPriceYuan: 40,
+    threshold: 20,
+  }
+  showCreate.value = true
+}
+
+async function create() {
+  if (!newFilm.value.name.trim() || !newFilm.value.brand.trim()) {
+    message.error("请填写商品名与品牌")
+    return
+  }
+  creating.value = true
+  try {
+    const { data } = await api.createFilm(
+      {
+        name: newFilm.value.name.trim(),
+        brand: newFilm.value.brand.trim(),
+        format: newFilm.value.format,
+        iso: newFilm.value.iso,
+        process: newFilm.value.process,
+        basePriceInCents: Math.round(newFilm.value.basePriceYuan * 100),
+        groupBuyPriceInCents: Math.round(newFilm.value.groupBuyPriceYuan * 100),
+        threshold: newFilm.value.threshold,
+        description: newFilm.value.description,
+        features: newFilm.value.features,
+        scenarios: newFilm.value.scenarios,
+      },
+      adminToken.value,
+    )
+    details.value[data.id] = data
+    showCreate.value = false
+    message.success(`已新增：${data.name}（${data.format}）`)
+    void load()
+  } catch (e) {
+    message.error(e instanceof Error ? e.message : String(e))
+  } finally {
+    creating.value = false
+  }
+}
+
 async function save() {
   if (!selected.value || !adminToken.value) return
   saving.value = true
@@ -183,6 +253,9 @@ onMounted(() => {
       <div v-else class="admin-layout">
         <aside class="admin-list">
           <n-select v-model:value="selectedId" :options="filmOptions" @update:value="selectFilm" />
+          <n-button type="primary" block style="margin-top: 10px" @click="openCreate">
+            新增商品
+          </n-button>
         </aside>
 
         <section v-if="selected" class="admin-editor">
@@ -225,6 +298,77 @@ onMounted(() => {
           </div>
         </section>
       </div>
+
+      <!-- 新增商品弹窗 -->
+      <n-modal
+        v-model:show="showCreate"
+        preset="card"
+        title="新增商品"
+        style="width: 640px; max-width: 92vw"
+        :mask-closable="!creating"
+      >
+        <div class="admin-create">
+          <div class="admin-field">
+            <span class="admin-label">商品名 *</span>
+            <n-input v-model:value="newFilm.name" placeholder="如：Kodak UltraMax 400" />
+          </div>
+          <div class="admin-field">
+            <span class="admin-label">品牌 *</span>
+            <n-input v-model:value="newFilm.brand" placeholder="如：Kodak" />
+          </div>
+          <div class="admin-field">
+            <span class="admin-label">画幅</span>
+            <n-select
+              v-model:value="newFilm.format"
+              :options="[
+                { label: '135', value: '135' },
+                { label: '120', value: '120' },
+              ]"
+            />
+          </div>
+          <div class="admin-field">
+            <span class="admin-label">ISO</span>
+            <n-input-number v-model:value="newFilm.iso" :min="1" :step="100" />
+          </div>
+          <div class="admin-field">
+            <span class="admin-label">冲洗工艺</span>
+            <n-input v-model:value="newFilm.process" placeholder="C-41 / E-6 / 黑白 (D-76)" />
+          </div>
+          <div class="admin-field">
+            <span class="admin-label">描述</span>
+            <n-input v-model:value="newFilm.description" type="textarea" :rows="3" />
+          </div>
+          <div class="admin-field">
+            <span class="admin-label">特性</span>
+            <n-dynamic-tags v-model:value="newFilm.features" />
+          </div>
+          <div class="admin-field">
+            <span class="admin-label">适用场景</span>
+            <n-dynamic-tags v-model:value="newFilm.scenarios" />
+          </div>
+          <div class="admin-create-row">
+            <div class="admin-field">
+              <span class="admin-label">日常价（元）</span>
+              <n-input-number v-model:value="newFilm.basePriceYuan" :min="0" :step="5" />
+            </div>
+            <div class="admin-field">
+              <span class="admin-label">成团价（元）</span>
+              <n-input-number v-model:value="newFilm.groupBuyPriceYuan" :min="0" :step="5" />
+            </div>
+            <div class="admin-field">
+              <span class="admin-label">成团门槛（件）</span>
+              <n-input-number v-model:value="newFilm.threshold" :min="1" :step="5" />
+            </div>
+          </div>
+        </div>
+
+        <template #footer>
+          <div class="admin-create-footer">
+            <n-button :disabled="creating" @click="showCreate = false">取消</n-button>
+            <n-button type="primary" :loading="creating" @click="create">创建</n-button>
+          </div>
+        </template>
+      </n-modal>
     </n-spin>
   </div>
 </template>
@@ -308,6 +452,31 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+/* 新增商品弹窗 */
+.admin-create {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.admin-create-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.admin-create-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+@media (max-width: 640px) {
+  .admin-create-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .admin-field {

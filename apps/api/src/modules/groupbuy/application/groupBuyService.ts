@@ -6,6 +6,7 @@ import type { GroupBuySucceededEvent } from "../domain/events.js"
 import {
   AlreadyJoinedGroup,
   AlreadyJoinedHub,
+  FilmAlreadyExists,
   FilmNotFound,
   HubClosed,
   HubNotFound,
@@ -13,7 +14,8 @@ import {
   InvalidQuantity,
   NotJoinedGroup,
 } from "../domain/errors.js"
-import type { Film, FilmId, SampleImage } from "../domain/film.js"
+import type { FilmId, SampleImage } from "../domain/film.js"
+import { Film, makeFilmId } from "../domain/film.js"
 import type { DeliveryMode, GroupBuyStatus } from "../domain/groupBuy.js"
 import { GroupBuy } from "../domain/groupBuy.js"
 import type { Hub, HubId } from "../domain/hub.js"
@@ -48,6 +50,13 @@ export interface FilmWithProgress {
   readonly film: Film
   readonly progress: GroupProgress
 }
+
+/** 生成 URL/ID 友好的 slug：小写、非字母数字转连字符 */
+const slug = (raw: string): string =>
+  raw
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, "-")
+    .replace(/^-+|-+$/g, "")
 
 /**
  * GroupBuyService 用例层：胶卷团购的完整业务编排。
@@ -280,6 +289,57 @@ export class GroupBuyService extends Effect.Service<GroupBuyService>()("GroupBuy
           }
           yield* films.save(film.addSampleImage(image))
           return image
+        }),
+
+      /** [管理端] 新增商品：ID 由 brand + name + format 生成 slug，冲突时追加随机后缀 */
+      createFilm: (input: {
+        name: string
+        brand: string
+        format: Film["format"]
+        iso: number
+        process: string
+        coverImageUrl?: string
+        description?: string
+        features?: ReadonlyArray<string>
+        scenarios?: ReadonlyArray<string>
+        basePriceInCents: number
+        threshold: number
+        groupBuyPriceInCents: number
+      }): Effect.Effect<Film, FilmAlreadyExists | PersistenceError> =>
+        Effect.gen(function* () {
+          const base = [
+            "film",
+            slug(input.brand),
+            slug(input.name),
+            slug(input.format),
+          ]
+            .filter(Boolean)
+            .join("-")
+          let id = makeFilmId(base)
+          const existing = yield* films.findById(id)
+          if (Option.isSome(existing)) {
+            id = makeFilmId(`${base}-${(yield* idgen.nextUUID).slice(0, 8)}`)
+          }
+          const film = Film.create({
+            id,
+            name: input.name,
+            brand: input.brand,
+            format: input.format,
+            iso: input.iso,
+            process: input.process,
+            coverImageUrl: input.coverImageUrl ?? "",
+            description: input.description ?? "",
+            features: input.features ?? [],
+            scenarios: input.scenarios ?? [],
+            sampleImages: [],
+            basePriceInCents: input.basePriceInCents,
+            deal: {
+              threshold: input.threshold,
+              groupBuyPriceInCents: input.groupBuyPriceInCents,
+            },
+          })
+          yield* films.save(film)
+          return film
         }),
 
       /** [管理端] 更新商品文案（描述 / 特性 / 适用场景） */

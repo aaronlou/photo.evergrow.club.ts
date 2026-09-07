@@ -3,6 +3,7 @@ import type {
   ActivityDto,
   ApiErrorDto,
   CreateActivityInput,
+  CreateFilmInput,
   FilmCatalogDetailDto,
   FilmCatalogDto,
   FilmDetailDto,
@@ -115,6 +116,12 @@ export const api = {
   },
 
   // ===== admin（商品后台管理，需 x-admin-token） =====
+  createFilm: (input: CreateFilmInput, adminToken: string) =>
+    request<{ data: FilmCatalogDetailDto }>("/admin/groupbuy/films", {
+      method: "POST",
+      headers: { "x-admin-token": adminToken },
+      body: JSON.stringify(input),
+    }),
   updateFilm: (id: string, input: UpdateFilmInput, adminToken: string) =>
     request<{ data: FilmCatalogDetailDto }>(`/admin/groupbuy/films/${encodeURIComponent(id)}`, {
       method: "PATCH",

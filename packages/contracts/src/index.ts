@@ -105,6 +105,22 @@ export interface UpdateFilmInput {
   scenarios?: string[]
 }
 
+/** [管理端] 新增商品（ID 由服务端生成；价格单位：分） */
+export interface CreateFilmInput {
+  name: string
+  brand: string
+  format: "135" | "120"
+  iso: number
+  process: string
+  basePriceInCents: number
+  threshold: number
+  groupBuyPriceInCents: number
+  coverImageUrl?: string
+  description?: string
+  features?: string[]
+  scenarios?: string[]
+}
+
 /** 拼团进度 */
 export interface GroupProgressDto {
   hubId: string
