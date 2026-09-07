@@ -13,7 +13,7 @@ import {
   useMessage,
 } from "naive-ui"
 
-import { api, ApiClientError } from "@/api/client"
+import { api, ADMIN_TOKEN_KEY, ApiClientError } from "@/api/client"
 import type { FilmCatalogDetailDto, FilmCatalogDto } from "@evergrow/contracts"
 
 /**
@@ -22,7 +22,7 @@ import type { FilmCatalogDetailDto, FilmCatalogDto } from "@evergrow/contracts"
  * - 支持编辑商品描述 / 特性 / 适用场景，上传更换封面图
  */
 
-const TOKEN_KEY = "evergrow-admin-token"
+const TOKEN_KEY = ADMIN_TOKEN_KEY
 const message = useMessage()
 
 const adminToken = ref(localStorage.getItem(TOKEN_KEY) ?? "")

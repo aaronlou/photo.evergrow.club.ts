@@ -33,6 +33,14 @@ export class ApiClientError extends Error {
  */
 const STORAGE_KEY = "evergrow-user-id"
 
+/** 管理端令牌的 localStorage 键（登录管理页时写入，删除样片等操作需要） */
+export const ADMIN_TOKEN_KEY = "evergrow-admin-token"
+
+/** 读取管理端令牌（未登录返回空串） */
+function adminToken(): string {
+  return localStorage.getItem(ADMIN_TOKEN_KEY) ?? ""
+}
+
 function currentUserId(): string {
   let id = localStorage.getItem(STORAGE_KEY)
   if (!id) {
@@ -128,12 +136,14 @@ export const api = {
       { method: "POST", body: form },
     )
   },
-  // 删除样片：上传者本人或管理员
-  deleteSampleImage: (filmId: string, imageId: string) =>
-    request<{ data: FilmCatalogDetailDto }>(
+  // 删除样片：上传者本人或管理员（本地存有管理令牌时自动附带）
+  deleteSampleImage: (filmId: string, imageId: string) => {
+    const token = adminToken()
+    return request<{ data: FilmCatalogDetailDto }>(
       `/groupbuy/films/${encodeURIComponent(filmId)}/images/${encodeURIComponent(imageId)}`,
-      { method: "DELETE" },
-    ),
+      { method: "DELETE", headers: token ? { "x-admin-token": token } : undefined },
+    )
+  },
 
   // ===== admin（商品后台管理，需 x-admin-token） =====
   createFilm: (input: CreateFilmInput, adminToken: string) =>

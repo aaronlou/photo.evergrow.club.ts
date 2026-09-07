@@ -641,21 +641,27 @@ a {
   gap: 8px;
 }
 
-/* ===== 冲洗样片画廊 ===== */
+/* ===== 冲洗样片画廊（瀑布流：完整展示原始比例，不裁切） ===== */
 .gallery {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
+  columns: 3;
+  column-gap: 12px;
+}
+
+@media (max-width: 900px) {
+  .gallery {
+    columns: 2;
+  }
 }
 
 .gallery-cell {
   position: relative;
+  break-inside: avoid;
+  margin-bottom: 12px;
 }
 
 .gallery-item {
   display: block;
   width: 100%;
-  aspect-ratio: 4 / 3;
   border-radius: 10px;
   overflow: hidden;
   border: 1px solid #e8ede9;
@@ -669,8 +675,7 @@ a {
 
 .gallery-item :deep(img) {
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  height: auto;
   display: block;
   transition: transform 0.25s ease;
 }
@@ -678,10 +683,6 @@ a {
 .gallery-cell:hover .gallery-item {
   transform: translateY(-2px);
   box-shadow: 0 8px 20px rgba(34, 48, 42, 0.16);
-}
-
-.gallery-cell:hover .gallery-item :deep(img) {
-  transform: scale(1.04);
 }
 
 /* 悬停显示的删除按钮 */

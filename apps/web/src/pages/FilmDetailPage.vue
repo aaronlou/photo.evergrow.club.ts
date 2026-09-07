@@ -17,7 +17,7 @@ import {
   type UploadCustomRequestOptions,
 } from "naive-ui"
 
-import { api, ApiClientError, getMyUserId } from "@/api/client"
+import { api, ADMIN_TOKEN_KEY, ApiClientError, getMyUserId } from "@/api/client"
 import { useHubStore } from "@/stores/hub"
 import type { FilmCatalogDetailDto, GroupProgressDto, HubDto } from "@evergrow/contracts"
 
@@ -204,9 +204,9 @@ async function saveInfo(part: "features" | "scenarios") {
   }
 }
 
-// 样片删除：上传者本人或管理员（adminToken 存在即视为管理员身份，由后端最终校验）
+// 样片删除：上传者本人或管理员（本地存有管理令牌即视为管理员身份，由后端最终校验）
 const myUserId = getMyUserId()
-const hasAdminToken = !!localStorage.getItem("evergrow-admin-token")
+const hasAdminToken = !!localStorage.getItem(ADMIN_TOKEN_KEY)
 
 function canDeleteImage(uploadedBy: string): boolean {
   return uploadedBy === myUserId || hasAdminToken
