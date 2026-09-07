@@ -12,7 +12,7 @@ import { ActivityRepository } from "../domain/repository.js"
 const DAY = 24 * 60 * 60 * 1000
 const daysFromNow = (days: number): Date => new Date(Date.now() + days * DAY)
 
-const seedActivities = (): ReadonlyArray<Activity> => [
+export const seedActivities = (): ReadonlyArray<Activity> => [
   // 报名进行中（未满员）
   Activity.create({
     id: makeActivityId("act-citywalk-sh"),
