@@ -229,6 +229,59 @@ a {
   gap: 20px;
 }
 
+/* ===== 排序条 ===== */
+.film-search {
+  flex: 1;
+  min-width: 180px;
+  max-width: 300px;
+  margin-right: 8px;
+}
+.film-sortbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.sortbar-label {
+  font-size: 12px;
+  color: var(--evergrow-text-sub);
+  margin-right: 2px;
+}
+
+.sortbar-item {
+  appearance: none;
+  border: 1px solid #dfe6e0;
+  background: #fff;
+  color: var(--evergrow-text-sub);
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.sortbar-item:hover {
+  border-color: var(--evergrow-primary);
+  color: var(--evergrow-primary);
+}
+
+.sortbar-item.active {
+  border-color: var(--evergrow-primary);
+  background: rgba(47, 158, 99, 0.08);
+  color: var(--evergrow-primary);
+  font-weight: 600;
+}
+
+.sortbar-dir {
+  font-size: 11px;
+  margin-left: 2px;
+}
+
 /* ===== 画幅切换：胶片条风格（深色片基 + 齿孔边） ===== */
 .format-switch {
   position: relative;

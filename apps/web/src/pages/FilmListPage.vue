@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue"
 import { useRouter } from "vue-router"
-import { NEmpty, NSpin, NTag } from "naive-ui"
+import { NEmpty, NInput, NSpin, NTag } from "naive-ui"
 
 import { api } from "@/api/client"
 import type { FilmCatalogDto } from "@evergrow/contracts"
@@ -11,6 +11,25 @@ const films = ref<FilmCatalogDto[]>([])
 const loading = ref(true)
 const error = ref("")
 const activeFormat = ref<"135" | "120">("135")
+type SortKey = "default" | "price" | "threshold"
+const sortKey = ref<SortKey>("default")
+const sortAsc = ref(true)
+
+const sortOptions: { key: SortKey; label: string }[] = [
+  { key: "default", label: "默认" },
+  { key: "price", label: "成团价" },
+  { key: "threshold", label: "成团件数" },
+]
+
+function pickSort(key: SortKey) {
+  if (sortKey.value === key && key !== "default") {
+    // 再点一次同项：切换正/倒序
+    sortAsc.value = !sortAsc.value
+  } else {
+    sortKey.value = key
+    sortAsc.value = true
+  }
+}
 
 async function load() {
   try {
@@ -22,7 +41,24 @@ async function load() {
   }
 }
 
-const filteredFilms = computed(() => films.value.filter((f) => f.format === activeFormat.value))
+const keyword = ref("")
+
+const filteredFilms = computed(() => {
+  const kw = keyword.value.trim().toLowerCase()
+  const list = films.value.filter((f) => {
+    if (f.format !== activeFormat.value) return false
+    if (!kw) return true
+    // 名称 / 品牌 / 特性 / 适用场景 模糊匹配
+    return [f.name, f.brand, ...f.features, ...f.scenarios].some((text) =>
+      text.toLowerCase().includes(kw),
+    )
+  })
+  if (sortKey.value === "default") return list
+  const field = sortKey.value === "price" ? "groupBuyPriceInCents" : "threshold"
+  return [...list].sort((a, b) =>
+    sortAsc.value ? a[field] - b[field] : b[field] - a[field],
+  )
+})
 
 const yuan = (cents: number) => `¥${(cents / 100).toFixed(1)}`
 
@@ -56,8 +92,34 @@ onMounted(load)
       </div>
     </div>
 
+    <div class="film-sortbar">
+      <n-input
+        v-model:value="keyword"
+        class="film-search"
+        size="small"
+        clearable
+        placeholder="搜索：人像、夜拍、国货、Kodak…"
+      />
+      <span class="sortbar-label">排序</span>
+      <button
+        v-for="opt in sortOptions"
+        :key="opt.key"
+        class="sortbar-item"
+        :class="{ active: sortKey === opt.key }"
+        @click="pickSort(opt.key)"
+      >
+        {{ opt.label }}
+        <span v-if="sortKey === opt.key && opt.key !== 'default'" class="sortbar-dir">
+          {{ sortAsc ? "↑" : "↓" }}
+        </span>
+      </button>
+    </div>
+
     <n-spin :show="loading">
-      <n-empty v-if="!loading && filteredFilms.length === 0" description="当前画幅暂无可选胶卷" />
+      <n-empty
+        v-if="!loading && filteredFilms.length === 0"
+        :description="keyword ? `没有匹配「${keyword}」的胶卷` : '当前画幅暂无可选胶卷'"
+      />
       <div v-else class="film-grid">
         <div
           v-for="film in filteredFilms"
