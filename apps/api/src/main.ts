@@ -67,7 +67,11 @@ const serveImage = (key: string, base: string, fs: FileSystem.FileSystem) =>
     if (!exists) {
       return HttpServerResponse.empty({ status: 404 })
     }
-    return yield* HttpServerResponse.file(target).pipe(Effect.mapError(toApiError))
+    // 图片 key 均为不可变内容（UUID 上传 key / 固定资源名），可放心长缓存
+    const cacheHeaders = { "cache-control": "public, max-age=31536000, immutable" }
+    return yield* HttpServerResponse.file(target, { headers: cacheHeaders }).pipe(
+      Effect.mapError(toApiError),
+    )
   })
 
 const HealthGroupLive = HttpApiBuilder.group(Api, "health", (handlers) =>

@@ -20,6 +20,9 @@ services:
         condition: service_healthy
     expose:
       - "3000"
+    volumes:
+      # 上传样片持久化（ImageStorageLocal 写入 /app/uploads）
+      - evergrow_uploads:/app/uploads
 
   web:
     image: ${WEB_IMAGE:-ghcr.io/aaronlou/photo.evergrow.club.ts/web:latest}
@@ -55,3 +58,4 @@ services:
 
 volumes:
   evergrow_pgdata:
+  evergrow_uploads:
