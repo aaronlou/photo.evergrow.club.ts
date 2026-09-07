@@ -641,31 +641,28 @@ a {
   gap: 8px;
 }
 
-/* ===== 冲洗样片画廊（瀑布流：完整展示原始比例，不裁切） ===== */
+/* ===== 冲洗样片画廊（统一卡片 + 完整缩放显示，不裁切不失真） ===== */
 .gallery {
-  columns: 3;
-  column-gap: 12px;
-}
-
-@media (max-width: 900px) {
-  .gallery {
-    columns: 2;
-  }
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
 }
 
 .gallery-cell {
   position: relative;
-  break-inside: avoid;
-  margin-bottom: 12px;
 }
 
 .gallery-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
+  aspect-ratio: 4 / 3;
   border-radius: 10px;
   overflow: hidden;
   border: 1px solid #e8ede9;
-  background: #f0f3f0;
+  /* 横竖图留白处的浅色底 */
+  background: linear-gradient(160deg, #f4f6f4, #e9efe9);
   box-shadow: 0 1px 4px rgba(34, 48, 42, 0.08);
   transition:
     transform 0.18s ease,
@@ -674,10 +671,12 @@ a {
 }
 
 .gallery-item :deep(img) {
-  width: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
   height: auto;
+  object-fit: contain;
   display: block;
-  transition: transform 0.25s ease;
 }
 
 .gallery-cell:hover .gallery-item {
