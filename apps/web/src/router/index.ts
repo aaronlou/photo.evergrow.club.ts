@@ -46,20 +46,15 @@ const router = createRouter({
           component: () => import("@/pages/MyActivitiesPage.vue"),
         },
         {
-          // 管理端不进导航，直接访问 URL（鉴权靠 ADMIN_TOKEN）
-          path: "admin/films",
-          name: "admin-films",
-          component: () => import("@/pages/AdminFilmsPage.vue"),
-        },
-        {
-          path: "admin/hubs",
-          name: "admin-hubs",
-          component: () => import("@/pages/AdminHubsPage.vue"),
-        },
-        {
-          path: "admin/users",
-          name: "admin-users",
-          component: () => import("@/pages/AdminUsersPage.vue"),
+          // 管理端：AdminLayout 统一处理令牌门禁与侧边导航，新增管理页只需加子路由
+          path: "admin",
+          component: () => import("@/layouts/AdminLayout.vue"),
+          children: [
+            { path: "", redirect: "/admin/films" },
+            { path: "films", name: "admin-films", component: () => import("@/pages/admin/FilmsPage.vue") },
+            { path: "hubs", name: "admin-hubs", component: () => import("@/pages/admin/HubsPage.vue") },
+            { path: "users", name: "admin-users", component: () => import("@/pages/admin/UsersPage.vue") },
+          ],
         },
       ],
     },

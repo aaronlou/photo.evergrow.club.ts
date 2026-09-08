@@ -1,8 +1,8 @@
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema, Multipart } from "@effect/platform"
 import { Schema } from "effect"
 
-import { ApiError, UnauthorizedError } from "../../../interface/apiError.js"
-import { HubInUse, SampleImageForbidden, SampleImageNotFound } from "../domain/errors.js"
+import { ApiError } from "../../../interface/apiError.js"
+import { SampleImageForbidden, SampleImageNotFound } from "../domain/errors.js"
 import type { GroupProgress } from "../application/groupBuyService.js"
 import type { Film } from "../domain/film.js"
 import type { Hub } from "../domain/hub.js"
@@ -311,121 +311,8 @@ export const GroupBuyApi = HttpApiGroup.make("groupbuy")
       .addError(ApiError),
   )
 
-// ===== 管理端 API（组合根统一校验 x-admin-token） =====
-
-/** [管理端] 更新商品文案：仅传的字段生效 */
-const AdminUpdateFilmPayload = Schema.Struct({
-  description: Schema.optional(Schema.String),
-  features: Schema.optional(Schema.Array(Schema.String)),
-  scenarios: Schema.optional(Schema.Array(Schema.String)),
-})
-
-/** [管理端] 封面图上传（multipart：file 部分为图片文件） */
-const AdminCoverUploadPayload = HttpApiSchema.Multipart(
-  Schema.Struct({
-    file: Multipart.SingleFileSchema,
-  }),
-)
-
-/** [管理端] 新增商品的必填/选填字段（ID 由服务端生成） */
-const AdminCreateFilmPayload = Schema.Struct({
-  name: Schema.String,
-  brand: Schema.String,
-  format: Schema.Literal("135", "120"),
-  iso: Schema.Int,
-  process: Schema.String,
-  basePriceInCents: Schema.Int,
-  threshold: Schema.Int,
-  groupBuyPriceInCents: Schema.Int,
-  coverImageUrl: Schema.optional(Schema.String),
-  description: Schema.optional(Schema.String),
-  features: Schema.optional(Schema.Array(Schema.String)),
-  scenarios: Schema.optional(Schema.Array(Schema.String)),
-})
-
-/** [管理端] 注册用户视图：含注册时间与密码设置状态（绝不包含密码密文） */
-export const AdminUserDto = Schema.Struct({
-  id: Schema.String,
-  phone: Schema.String,
-  nickname: Schema.String,
-  status: Schema.Literal("Active", "Disabled"),
-  hasPassword: Schema.Boolean,
-  /** ISO 8601 字符串 */
-  createdAt: Schema.String,
-})
-export type AdminUserDto = Schema.Schema.Type<typeof AdminUserDto>
-
-export const AdminApi = HttpApiGroup.make("admin")
-  .add(
-    HttpApiEndpoint.get("listUsers", "/identity/users")
-      .addSuccess(
-        Schema.Struct({
-          data: Schema.Struct({
-            total: Schema.Int,
-            items: Schema.Array(AdminUserDto),
-          }),
-        }),
-      )
-      .addError(ApiError)
-      .addError(UnauthorizedError),
-  )
-  .add(
-    HttpApiEndpoint.get("listHubs", "/groupbuy/hubs")
-      .addSuccess(Schema.Struct({ data: Schema.Array(AdminHubDto) }))
-      .addError(ApiError)
-      .addError(UnauthorizedError),
-  )
-  .add(
-    HttpApiEndpoint.post("createHub", "/groupbuy/hubs")
-      .setPayload(Schema.Struct({ name: Schema.String, city: Schema.String, address: Schema.String }))
-      .addSuccess(Schema.Struct({ data: AdminHubDto }))
-      .addError(ApiError)
-      .addError(UnauthorizedError),
-  )
-  .add(
-    HttpApiEndpoint.patch("updateHub", "/groupbuy/hubs/:hubId")
-      .setPath(Schema.Struct({ hubId: Schema.String }))
-      .setPayload(
-        Schema.Struct({
-          name: Schema.optional(Schema.String),
-          city: Schema.optional(Schema.String),
-          address: Schema.optional(Schema.String),
-          status: Schema.optional(Schema.Literal("Active", "Closed")),
-        }),
-      )
-      .addSuccess(Schema.Struct({ data: AdminHubDto }))
-      .addError(ApiError)
-      .addError(UnauthorizedError),
-  )
-  .add(
-    HttpApiEndpoint.del("deleteHub", "/groupbuy/hubs/:hubId")
-      .setPath(Schema.Struct({ hubId: Schema.String }))
-      .addSuccess(Schema.Struct({ data: Schema.Struct({ deleted: Schema.Boolean }) }))
-      .addError(ApiError)
-      .addError(UnauthorizedError)
-      .addError(HubInUse),
-  )
-  .add(
-    HttpApiEndpoint.post("createFilm", "/groupbuy/films")
-      .setPayload(AdminCreateFilmPayload)
-      .addSuccess(Schema.Struct({ data: FilmCatalogDetailDto }))
-      .addError(ApiError)
-      .addError(UnauthorizedError),
-  )
-  .add(
-    HttpApiEndpoint.patch("updateFilm", "/groupbuy/films/:filmId")
-      .setPath(Schema.Struct({ filmId: Schema.String }))
-      .setPayload(AdminUpdateFilmPayload)
-      .addSuccess(Schema.Struct({ data: FilmCatalogDetailDto }))
-      .addError(ApiError)
-      .addError(UnauthorizedError),
-  )
-  .add(
-    HttpApiEndpoint.post("setFilmCover", "/groupbuy/films/:filmId/cover")
-      .setPath(Schema.Struct({ filmId: Schema.String }))
-      .setPayload(AdminCoverUploadPayload)
-      .addSuccess(Schema.Struct({ data: FilmCatalogDetailDto }))
-      .addError(ApiError)
-      .addError(UnauthorizedError),
-  )
- 
+/**
+ * [管理端] API 定义（AdminApi / AdminHubDto / AdminUserDto）已迁移至
+ * src/interface/admin/ —— admin 是跨上下文的运营门面，不属于本上下文。
+ * toAdminHubDto 保留在此（领域对象 → DTO 的映射随上下文走）。
+ */

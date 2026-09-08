@@ -1,8 +1,9 @@
 import { HttpApi } from "@effect/platform"
 
+import { AdminApi } from "./interface/admin/adminApi.js"
 import { HealthApi } from "./interface/healthApi.js"
 import { ActivityApi } from "./modules/activity/interface/activityApi.js"
-import { AdminApi, GroupBuyApi } from "./modules/groupbuy/interface/groupBuyApi.js"
+import { GroupBuyApi } from "./modules/groupbuy/interface/groupBuyApi.js"
 import { IdentityApi } from "./modules/identity/interface/identityApi.js"
 
 /**

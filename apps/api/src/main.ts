@@ -1,4 +1,3 @@
-import type { HttpServerRequest} from "@effect/platform";
 import { FileSystem, Headers, HttpServerResponse } from "@effect/platform"
 import { Config, Effect, Either, Layer, Logger, Option } from "effect"
 import { Clock } from "effect"
@@ -9,11 +8,10 @@ import { dirname, join, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 
 import { Api } from "./api.js"
-import type { ApiError} from "./interface/apiError.js";
-import { toApiError, UnauthorizedError } from "./interface/apiError.js"
+import { toApiError } from "./interface/apiError.js"
+import { AdminGroupLive, requireAdmin } from "./interface/admin/adminHandlers.js"
 import { currentUserId } from "./interface/auth.js"
 import { SampleImageForbidden, SampleImageNotFound } from "./modules/groupbuy/domain/errors.js"
-import { HubInUse } from "./modules/groupbuy/domain/errors.js"
 import { ActivityService } from "./modules/activity/application/activityService.js"
 import { makeActivityId } from "./modules/activity/domain/activity.js"
 import { ActivityRepositoryInMemory } from "./modules/activity/infrastructure/activityRepositoryInMemory.js"
@@ -34,7 +32,6 @@ import { FilmRepositorySql } from "./modules/groupbuy/infrastructure/filmReposit
 import { ImageStorageLocal, uploadsDir } from "./modules/groupbuy/infrastructure/imageStorageLocal.js"
 import { HubRepositorySql } from "./modules/groupbuy/infrastructure/hubRepositorySql.js"
 import {
-  toAdminHubDto,
   toFilmCatalogDetailDto,
   toFilmCatalogDto,
   toFilmDetailDto,
@@ -367,112 +364,6 @@ const ActivityGroupLive = HttpApiBuilder.group(Api, "activity", (handlers) =>
   }),
 )
 
-/**
- * 管理端鉴权：请求头 x-admin-token 必须等于 ADMIN_TOKEN 配置；
- * 未配置 ADMIN_TOKEN 时管理端点全部拒绝（安全默认）。
- */
-const requireAdmin = (
-  request: HttpServerRequest.HttpServerRequest,
-): Effect.Effect<void, UnauthorizedError> =>
-  Effect.gen(function* () {
-    // Option<Option<string>>：外层为配置读取失败，内层为未配置 ADMIN_TOKEN
-    const configured = Option.flatten(
-      yield* Config.option(Config.string("ADMIN_TOKEN")).pipe(Effect.option),
-    )
-    const provided = Headers.get(request.headers, "x-admin-token")
-    if (Option.isNone(configured) || Option.getOrUndefined(provided) !== configured.value) {
-      return yield* Effect.fail(
-        new UnauthorizedError({ message: "管理员令牌缺失或不正确" }),
-      )
-    }
-  })
-
-/** 管理端错误映射：UnauthorizedError 保持 401，其余归一为 ApiError */
-const toAdminError = <E>(error: E): ApiError | UnauthorizedError =>
-  error instanceof UnauthorizedError ? error : toApiError(error)
-
-const AdminGroupLive = HttpApiBuilder.group(Api, "admin", (handlers) =>
-  Effect.gen(function* () {
-    const groupBuy = yield* GroupBuyService
-    const users = yield* UserService
-    return handlers
-      .handle("listUsers", ({ request }) =>
-        requireAdmin(request).pipe(
-          Effect.andThen(() => users.listUsers()),
-          Effect.map((list) => ({
-            data: {
-              total: list.length,
-              items: list.map((user) => ({
-                id: user.id,
-                phone: user.phone,
-                nickname: user.nickname,
-                status: user.status,
-                hasPassword: user.hasPassword(),
-                createdAt: user.createdAt.toISOString(),
-              })),
-            },
-          })),
-          Effect.mapError(toAdminError),
-        ),
-      )
-      .handle("listHubs", ({ request }) =>
-        requireAdmin(request).pipe(
-          Effect.andThen(() => groupBuy.listHubs("admin")),
-          Effect.map((hubs) => ({ data: hubs.map((hub) => toAdminHubDto(hub)) })),
-          Effect.mapError(toAdminError),
-        ),
-      )
-      .handle("createHub", ({ request, payload }) =>
-        requireAdmin(request).pipe(
-          Effect.andThen(() => groupBuy.createHub(payload)),
-          Effect.map((hub) => ({ data: toAdminHubDto(hub) })),
-          Effect.mapError(toAdminError),
-        ),
-      )
-      .handle("updateHub", ({ path, request, payload }) =>
-        requireAdmin(request).pipe(
-          Effect.andThen(() => groupBuy.updateHub(makeHubId(path.hubId), payload)),
-          Effect.map((hub) => ({ data: toAdminHubDto(hub) })),
-          Effect.mapError(toAdminError),
-        ),
-      )
-      .handle("deleteHub", ({ path, request }) =>
-        requireAdmin(request).pipe(
-          Effect.andThen(() => groupBuy.deleteHub(makeHubId(path.hubId))),
-          Effect.map(() => ({ data: { deleted: true } })),
-          // 409 HubInUse 保持原始错误类型（带正确状态码），其余归一为 ApiError
-          Effect.mapError((e) => (e instanceof HubInUse ? e : toAdminError(e))),
-        ),
-      )
-      .handle("createFilm", ({ request, payload }) =>
-        requireAdmin(request).pipe(
-          Effect.andThen(() => groupBuy.createFilm(payload)),
-          Effect.map((film) => ({ data: toFilmCatalogDetailDto(film) })),
-          Effect.mapError(toAdminError),
-        ),
-      )
-      .handle("updateFilm", ({ path, request, payload }) =>
-        requireAdmin(request).pipe(
-          Effect.andThen(() => groupBuy.updateFilm(makeFilmId(path.filmId), payload)),
-          Effect.map((film) => ({ data: toFilmCatalogDetailDto(film) })),
-          Effect.mapError(toAdminError),
-        ),
-      )
-      .handle("setFilmCover", ({ path, request, payload }) =>
-        requireAdmin(request).pipe(
-          Effect.andThen(() =>
-            groupBuy.setFilmCover(makeFilmId(path.filmId), {
-              fromPath: payload.file.path,
-              name: payload.file.name,
-              contentType: payload.file.contentType,
-            }),
-          ),
-          Effect.map((film) => ({ data: toFilmCatalogDetailDto(film) })),
-          Effect.mapError(toAdminError),
-        ),
-      )
-  }),
-)
 
 /** activity：仓储按 DATABASE_URL 切换（未配置回落到内存仓储，含种子数据） */
 const ActivityPersistenceLive = Layer.unwrapEffect(

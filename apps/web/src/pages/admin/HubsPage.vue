@@ -2,12 +2,10 @@
 import { onMounted, ref } from "vue"
 import {
   NButton,
-  NEmpty,
   NForm,
   NFormItem,
   NInput,
   NModal,
-  NP,
   NPopconfirm,
   NSpin,
   NSwitch,
@@ -15,69 +13,20 @@ import {
   NText,
   useMessage,
 } from "naive-ui"
-import { RouterLink } from "vue-router"
 
-import { api, ADMIN_TOKEN_KEY, ApiClientError } from "@/api/client"
+import { api, ApiClientError } from "@/api/client"
+import { useAdminAuthStore } from "@/stores/adminAuth"
 import type { AdminHubDto } from "@evergrow/contracts"
 
-/**
- * 位置点后台管理（仅限管理员）：
- * - 访问 /admin/hubs，首次输入管理员令牌（后端 ADMIN_TOKEN）存入 localStorage
- * - 支持新增 / 编辑（名称、城市、地址、开启状态）/ 删除位置点
- * - 删除保护：该点下存在参团记录时后端拒绝（409）
- */
+/** 位置点管理：增删改与开关（令牌与导航由 AdminLayout 统一处理） */
 
-const TOKEN_KEY = ADMIN_TOKEN_KEY
+const auth = useAdminAuthStore()
 const message = useMessage()
-
-const adminToken = ref(localStorage.getItem(TOKEN_KEY) ?? "")
-const tokenDraft = ref("")
 
 const loading = ref(true)
 const hubs = ref<AdminHubDto[]>([])
 
-// ===== 令牌门禁 =====
-
-async function saveToken() {
-  const t = tokenDraft.value.trim()
-  if (!t) return
-  // 用一个必然 401/非 401 的探测请求校验令牌：
-  // - 401 → 令牌错误；其它错误（如位置点不存在）说明令牌已通过校验
-  try {
-    adminToken.value = t
-    await api.updateHub("ping", {}, t)
-    localStorage.setItem(TOKEN_KEY, t)
-    message.success("令牌已保存")
-    void load()
-  } catch (e) {
-    if (e instanceof ApiClientError && e.status === 401) {
-      adminToken.value = ""
-      message.error("令牌不正确")
-    } else {
-      // 令牌有效（探测请求因位置点不存在而失败）
-      localStorage.setItem(TOKEN_KEY, t)
-      message.success("令牌已保存")
-      void load()
-    }
-  }
-}
-
-// ===== 列表 =====
-
-async function load() {
-  loading.value = true
-  try {
-    const { data } = await api.listAdminHubs(adminToken.value)
-    hubs.value = data
-  } catch (e) {
-    message.error(e instanceof Error ? e.message : String(e))
-  } finally {
-    loading.value = false
-  }
-}
-
 // ===== 新增 =====
-
 const showCreate = ref(false)
 const creating = ref(false)
 const newHub = ref({ name: "", city: "", address: "" })
@@ -100,7 +49,7 @@ async function create() {
         city: newHub.value.city.trim(),
         address: newHub.value.address.trim(),
       },
-      adminToken.value,
+      auth.token,
     )
     hubs.value.push(data)
     showCreate.value = false
@@ -113,7 +62,6 @@ async function create() {
 }
 
 // ===== 编辑 =====
-
 const showEdit = ref(false)
 const saving = ref(false)
 const editTarget = ref<AdminHubDto | null>(null)
@@ -146,7 +94,7 @@ async function save() {
         address: editDraft.value.address.trim(),
         status: editDraft.value.active ? "Active" : "Closed",
       },
-      adminToken.value,
+      auth.token,
     )
     const idx = hubs.value.findIndex((h) => h.id === data.id)
     if (idx >= 0) hubs.value[idx] = data
@@ -160,13 +108,12 @@ async function save() {
 }
 
 // ===== 删除 =====
-
 const deletingId = ref("")
 
 async function remove(hub: AdminHubDto) {
   deletingId.value = hub.id
   try {
-    await api.deleteHub(hub.id, adminToken.value)
+    await api.deleteHub(hub.id, auth.token)
     hubs.value = hubs.value.filter((h) => h.id !== hub.id)
     message.success(`已删除位置点：${hub.name}`)
   } catch (e) {
@@ -180,9 +127,16 @@ async function remove(hub: AdminHubDto) {
   }
 }
 
-onMounted(() => {
-  if (adminToken.value) void load()
-  else loading.value = false
+onMounted(async () => {
+  loading.value = true
+  try {
+    const { data } = await api.listAdminHubs(auth.token)
+    hubs.value = data
+  } catch (e) {
+    message.error(e instanceof Error ? e.message : String(e))
+  } finally {
+    loading.value = false
+  }
 })
 </script>
 
@@ -191,27 +145,12 @@ onMounted(() => {
     <div class="activity-head">
       <div>
         <h2 class="page-title">位置点管理</h2>
-        <p class="page-sub">维护团购取货 / 成团点（增删改与开关，仅限管理员）</p>
+        <p class="page-sub">维护团购取货 / 成团点（增删改与开关）</p>
       </div>
       <n-button type="primary" @click="openCreate">新增位置点</n-button>
     </div>
 
-    <!-- 令牌门禁 -->
-    <div v-if="!adminToken" class="admin-token-gate">
-      <n-p>请输入管理员令牌（服务器 ADMIN_TOKEN 环境变量）</n-p>
-      <div class="admin-token-row">
-        <n-input
-          v-model:value="tokenDraft"
-          type="password"
-          show-password-on="click"
-          placeholder="ADMIN_TOKEN"
-          @keydown.enter="saveToken"
-        />
-        <n-button type="primary" @click="saveToken">进入</n-button>
-      </div>
-    </div>
-
-    <n-spin v-else :show="loading">
+    <n-spin :show="loading">
       <n-empty v-if="!loading && hubs.length === 0" description="暂无位置点" />
       <div v-else class="hub-list">
         <div v-for="hub in hubs" :key="hub.id" class="hub-card" :class="{ closed: hub.status === 'Closed' }">
@@ -300,31 +239,10 @@ onMounted(() => {
         </div>
       </template>
     </n-modal>
-
-    <p class="admin-nav">
-      <router-link to="/admin/films">前往商品管理 →</router-link>
-      <router-link to="/admin/users" style="margin-left: 14px">用户管理 →</router-link>
-    </p>
   </div>
 </template>
 
 <style scoped>
-.admin-token-gate {
-  background: #fff;
-  border: 1px solid #e8ede9;
-  border-radius: 14px;
-  padding: 28px;
-  max-width: 420px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.admin-token-row {
-  display: flex;
-  gap: 8px;
-}
-
 .hub-list {
   display: flex;
   flex-direction: column;
@@ -393,16 +311,6 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-.admin-nav {
-  margin-top: 24px;
-  font-size: 13px;
-}
-
-.admin-nav a {
-  color: var(--evergrow-primary, #2f9e63);
-  text-decoration: none;
 }
 
 @media (max-width: 640px) {
