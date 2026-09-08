@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url"
 import { Api } from "./api.js"
 import type { ApiError} from "./interface/apiError.js";
 import { toApiError, UnauthorizedError } from "./interface/apiError.js"
+import { currentUserId } from "./interface/auth.js"
 import { SampleImageForbidden, SampleImageNotFound } from "./modules/groupbuy/domain/errors.js"
 import { HubInUse } from "./modules/groupbuy/domain/errors.js"
 import { ActivityService } from "./modules/activity/application/activityService.js"
@@ -18,7 +19,6 @@ import { makeActivityId } from "./modules/activity/domain/activity.js"
 import { ActivityRepositoryInMemory } from "./modules/activity/infrastructure/activityRepositoryInMemory.js"
 import { ActivityRepositorySql } from "./modules/activity/infrastructure/activityRepositorySql.js"
 import {
-  currentUserId as activityCurrentUserId,
   toActivityDetailDto,
   toActivityDto,
 } from "./modules/activity/interface/activityApi.js"
@@ -34,7 +34,6 @@ import { FilmRepositorySql } from "./modules/groupbuy/infrastructure/filmReposit
 import { ImageStorageLocal, uploadsDir } from "./modules/groupbuy/infrastructure/imageStorageLocal.js"
 import { HubRepositorySql } from "./modules/groupbuy/infrastructure/hubRepositorySql.js"
 import {
-  currentUserId,
   toAdminHubDto,
   toFilmCatalogDetailDto,
   toFilmCatalogDto,
@@ -44,6 +43,14 @@ import {
   toProgressDto,
 } from "./modules/groupbuy/interface/groupBuyApi.js"
 import { UserService } from "./modules/identity/application/userService.js"
+import {
+  InvalidCredentials,
+  InvalidPassword,
+  InvalidPhoneNumber,
+  PhoneAlreadyRegistered,
+  SessionInvalid,
+  UserNotFound,
+} from "./modules/identity/domain/errors.js"
 import { makeUserId } from "./modules/identity/domain/user.js"
 import { PasswordHasherScrypt } from "./modules/identity/infrastructure/passwordHasherScrypt.js"
 import { SessionRepositoryInMemory } from "./modules/identity/infrastructure/sessionRepositoryInMemory.js"
@@ -92,6 +99,10 @@ const HealthGroupLive = HttpApiBuilder.group(Api, "health", (handlers) =>
   ),
 )
 
+/** 从 Authorization 头解析 Bearer 令牌（"Bearer <token>" → "<token>"），格式不符返回 undefined */
+const bearerToken = (authorization: string | undefined): string | undefined =>
+  authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : undefined
+
 const IdentityGroupLive = HttpApiBuilder.group(Api, "identity", (handlers) =>
   Effect.gen(function* () {
     const users = yield* UserService
@@ -100,14 +111,45 @@ const IdentityGroupLive = HttpApiBuilder.group(Api, "identity", (handlers) =>
         users.getProfile(makeUserId(path.id)).pipe(
           Effect.map(toUserDto),
           Effect.map((data) => ({ data })),
-          Effect.mapError(toApiError),
+          // UserNotFound 自带 404 注解，保持原错误；其余归一为 ApiError
+          Effect.mapError((e) => (e instanceof UserNotFound ? e : toApiError(e))),
         ),
       )
       .handle("register", ({ payload }) =>
         users.register(payload).pipe(
           Effect.map(toUserDto),
           Effect.map((data) => ({ data })),
+          // 409/400 语义的领域错误保持原错误，其余归一为 ApiError
+          Effect.mapError((e) =>
+            e instanceof PhoneAlreadyRegistered ||
+            e instanceof InvalidPhoneNumber ||
+            e instanceof InvalidPassword
+              ? e
+              : toApiError(e),
+          ),
+        ),
+      )
+      .handle("login", ({ payload }) =>
+        users.login(payload).pipe(
+          Effect.map(({ user, session }) => ({
+            data: { token: session.token, user: toUserDto(user) },
+          })),
+          // InvalidCredentials 自带 401 注解，保持原错误；其余归一为 ApiError
+          Effect.mapError((e) => (e instanceof InvalidCredentials ? e : toApiError(e))),
+        ),
+      )
+      .handle("logout", ({ request }) =>
+        users.logout(bearerToken(Option.getOrUndefined(Headers.get(request.headers, "authorization"))) ?? "").pipe(
+          Effect.map(() => ({ data: { loggedOut: true } })),
           Effect.mapError(toApiError),
+        ),
+      )
+      .handle("me", ({ request }) =>
+        users.currentUser(bearerToken(Option.getOrUndefined(Headers.get(request.headers, "authorization"))) ?? "").pipe(
+          Effect.map(toUserDto),
+          Effect.map((data) => ({ data })),
+          // SessionInvalid 自带 401 注解，保持原错误
+          Effect.mapError((e) => (e instanceof SessionInvalid ? e : toApiError(e))),
         ),
       )
   }),
@@ -116,38 +158,51 @@ const IdentityGroupLive = HttpApiBuilder.group(Api, "identity", (handlers) =>
 const GroupBuyGroupLive = HttpApiBuilder.group(Api, "groupbuy", (handlers) =>
   Effect.gen(function* () {
     const groupBuy = yield* GroupBuyService
+    const users = yield* UserService
     const fs = yield* FileSystem.FileSystem
     return handlers
-      .handle("getHubs", ({ request }) => {
-        const uid = currentUserId(request)
-        return groupBuy.listHubs(uid).pipe(
-          Effect.map((hubs) => ({ data: hubs.map((hub) => toHubDto(hub, uid)) })),
+      .handle("getHubs", ({ request }) =>
+        currentUserId(request, users).pipe(
+          Effect.flatMap((uid) =>
+            groupBuy.listHubs(uid).pipe(
+              Effect.map((hubs) => ({ data: hubs.map((hub) => toHubDto(hub, uid)) })),
+            ),
+          ),
           Effect.mapError(toApiError),
-        )
-      })
-      .handle("joinHub", ({ path, request }) => {
-        const uid = currentUserId(request)
-        return groupBuy.joinHub(uid, makeHubId(path.id)).pipe(
-          Effect.map((hub) => ({ data: toHubDto(hub, uid) })),
+        ),
+      )
+      .handle("joinHub", ({ path, request }) =>
+        currentUserId(request, users).pipe(
+          Effect.flatMap((uid) =>
+            groupBuy.joinHub(uid, makeHubId(path.id)).pipe(
+              Effect.map((hub) => ({ data: toHubDto(hub, uid) })),
+            ),
+          ),
           Effect.mapError(toApiError),
-        )
-      })
-      .handle("getFilms", ({ path, request }) => {
-        const uid = currentUserId(request)
-        return groupBuy.listFilms(makeHubId(path.hubId), uid).pipe(
-          Effect.map((items) => ({
-            data: items.map(({ film, progress }) => toFilmDto(film, progress)),
-          })),
+        ),
+      )
+      .handle("getFilms", ({ path, request }) =>
+        currentUserId(request, users).pipe(
+          Effect.flatMap((uid) =>
+            groupBuy.listFilms(makeHubId(path.hubId), uid).pipe(
+              Effect.map((items) => ({
+                data: items.map(({ film, progress }) => toFilmDto(film, progress)),
+              })),
+            ),
+          ),
           Effect.mapError(toApiError),
-        )
-      })
-      .handle("getFilm", ({ path, request }) => {
-        const uid = currentUserId(request)
-        return groupBuy.getFilm(makeHubId(path.hubId), makeFilmId(path.filmId), uid).pipe(
-          Effect.map(({ film, progress }) => ({ data: toFilmDetailDto(film, progress) })),
+        ),
+      )
+      .handle("getFilm", ({ path, request }) =>
+        currentUserId(request, users).pipe(
+          Effect.flatMap((uid) =>
+            groupBuy.getFilm(makeHubId(path.hubId), makeFilmId(path.filmId), uid).pipe(
+              Effect.map(({ film, progress }) => ({ data: toFilmDetailDto(film, progress) })),
+            ),
+          ),
           Effect.mapError(toApiError),
-        )
-      })
+        ),
+      )
       .handle("listAllFilms", () =>
         groupBuy.listAllFilms().pipe(
           Effect.map((films) => ({ data: films.map((film) => toFilmCatalogDto(film)) })),
@@ -171,66 +226,73 @@ const GroupBuyGroupLive = HttpApiBuilder.group(Api, "groupbuy", (handlers) =>
             Effect.mapError(toApiError),
           ),
       )
-      .handle("joinGroupBuy", ({ path, request, payload }) => {
-        const uid = currentUserId(request)
-        return groupBuy
-          .joinGroupBuy(makeHubId(path.hubId), makeFilmId(path.filmId), uid, payload.quantity)
-          .pipe(
-            Effect.map((progress) => ({ data: toProgressDto(progress) })),
-            Effect.mapError(toApiError),
-          )
-      })
-      .handle("payDeposit", ({ path, request }) => {
-        const uid = currentUserId(request)
-        return groupBuy
-          .payDeposit(makeHubId(path.hubId), makeFilmId(path.filmId), uid)
-          .pipe(
-            Effect.map((progress) => ({ data: toProgressDto(progress) })),
-            Effect.mapError(toApiError),
-          )
-      })
-      .handle("getGroupProgress", ({ path, request }) => {
-        const uid = currentUserId(request)
-        return groupBuy
-          .getProgress(makeHubId(path.hubId), makeFilmId(path.filmId), uid)
-          .pipe(
-            Effect.map((progress) => ({ data: toProgressDto(progress) })),
-            Effect.mapError(toApiError),
-          )
-      })
-      .handle("uploadImage", ({ path, request, payload }) => {
-        const uid = currentUserId(request)
-        return groupBuy
-          .uploadSampleImage(makeFilmId(path.filmId), uid, {
-            fromPath: payload.file.path,
-            name: payload.file.name,
-            contentType: payload.file.contentType,
-          })
-          .pipe(
-            Effect.map((image) => ({ data: image })),
-            Effect.mapError(toApiError),
-          )
-      })
-      .handle("deleteSampleImage", ({ path, request }) => {
-        const uid = currentUserId(request)
-        return Effect.either(requireAdmin(request)).pipe(
-          Effect.flatMap((adminResult) =>
-            groupBuy.removeSampleImage(
-              makeFilmId(path.filmId),
-              path.imageId,
-              uid,
-              Either.isRight(adminResult),
+      .handle("joinGroupBuy", ({ path, request, payload }) =>
+        currentUserId(request, users).pipe(
+          Effect.flatMap((uid) =>
+            groupBuy
+              .joinGroupBuy(makeHubId(path.hubId), makeFilmId(path.filmId), uid, payload.quantity)
+              .pipe(Effect.map((progress) => ({ data: toProgressDto(progress) }))),
+          ),
+          Effect.mapError(toApiError),
+        ),
+      )
+      .handle("payDeposit", ({ path, request }) =>
+        currentUserId(request, users).pipe(
+          Effect.flatMap((uid) =>
+            groupBuy
+              .payDeposit(makeHubId(path.hubId), makeFilmId(path.filmId), uid)
+              .pipe(Effect.map((progress) => ({ data: toProgressDto(progress) }))),
+          ),
+          Effect.mapError(toApiError),
+        ),
+      )
+      .handle("getGroupProgress", ({ path, request }) =>
+        currentUserId(request, users).pipe(
+          Effect.flatMap((uid) =>
+            groupBuy
+              .getProgress(makeHubId(path.hubId), makeFilmId(path.filmId), uid)
+              .pipe(Effect.map((progress) => ({ data: toProgressDto(progress) }))),
+          ),
+          Effect.mapError(toApiError),
+        ),
+      )
+      .handle("uploadImage", ({ path, request, payload }) =>
+        currentUserId(request, users).pipe(
+          Effect.flatMap((uid) =>
+            groupBuy
+              .uploadSampleImage(makeFilmId(path.filmId), uid, {
+                fromPath: payload.file.path,
+                name: payload.file.name,
+                contentType: payload.file.contentType,
+              })
+              .pipe(Effect.map((image) => ({ data: image }))),
+          ),
+          Effect.mapError(toApiError),
+        ),
+      )
+      .handle("deleteSampleImage", ({ path, request }) =>
+        currentUserId(request, users).pipe(
+          Effect.flatMap((uid) =>
+            Effect.either(requireAdmin(request)).pipe(
+              Effect.flatMap((adminResult) =>
+                groupBuy.removeSampleImage(
+                  makeFilmId(path.filmId),
+                  path.imageId,
+                  uid,
+                  Either.isRight(adminResult),
+                ),
+              ),
+              Effect.map((film) => ({ data: toFilmCatalogDetailDto(film) })),
             ),
           ),
-          Effect.map((film) => ({ data: toFilmCatalogDetailDto(film) })),
           // 403/404 保持原始错误类型（带正确状态码），其余归一为 ApiError
           Effect.mapError((e) =>
             e instanceof SampleImageForbidden || e instanceof SampleImageNotFound
               ? e
               : toApiError(e),
           ),
-        )
-      })
+        ),
+      )
       .handle("getUploadedImage", ({ path }) => serveImage(path.key, uploadsDir, fs))
       .handle("getFilmCover", ({ path }) => serveImage(path.key, filmAssetsDir, fs))
       .handle("getDemoImage", ({ path }) => serveImage(path.key, demoAssetsDir, fs))
@@ -240,49 +302,68 @@ const GroupBuyGroupLive = HttpApiBuilder.group(Api, "groupbuy", (handlers) =>
 const ActivityGroupLive = HttpApiBuilder.group(Api, "activity", (handlers) =>
   Effect.gen(function* () {
     const activities = yield* ActivityService
+    const users = yield* UserService
     return handlers
-      .handle("listActivities", ({ request }) => {
-        const uid = activityCurrentUserId(request)
-        return activities.listActivities(uid).pipe(
-          Effect.map((list) => ({ data: list.map((view) => toActivityDto(view)) })),
+      .handle("listActivities", ({ request }) =>
+        currentUserId(request, users).pipe(
+          Effect.flatMap((uid) =>
+            activities.listActivities(uid).pipe(
+              Effect.map((list) => ({ data: list.map((view) => toActivityDto(view)) })),
+            ),
+          ),
           Effect.mapError(toApiError),
-        )
-      })
-      .handle("listMyActivities", ({ request }) => {
-        const uid = activityCurrentUserId(request)
-        return activities.listMyActivities(uid).pipe(
-          Effect.map((list) => ({ data: list.map((view) => toActivityDto(view)) })),
+        ),
+      )
+      .handle("listMyActivities", ({ request }) =>
+        currentUserId(request, users).pipe(
+          Effect.flatMap((uid) =>
+            activities.listMyActivities(uid).pipe(
+              Effect.map((list) => ({ data: list.map((view) => toActivityDto(view)) })),
+            ),
+          ),
           Effect.mapError(toApiError),
-        )
-      })
-      .handle("getActivity", ({ path, request }) => {
-        const uid = activityCurrentUserId(request)
-        return activities.getActivity(makeActivityId(path.id), uid).pipe(
-          Effect.map((view) => ({ data: toActivityDetailDto(view) })),
+        ),
+      )
+      .handle("getActivity", ({ path, request }) =>
+        currentUserId(request, users).pipe(
+          Effect.flatMap((uid) =>
+            activities.getActivity(makeActivityId(path.id), uid).pipe(
+              Effect.map((view) => ({ data: toActivityDetailDto(view) })),
+            ),
+          ),
           Effect.mapError(toApiError),
-        )
-      })
-      .handle("createActivity", ({ payload, request }) => {
-        const uid = activityCurrentUserId(request)
-        return activities.create(payload, uid).pipe(
-          Effect.map((view) => ({ data: toActivityDetailDto(view) })),
+        ),
+      )
+      .handle("createActivity", ({ payload, request }) =>
+        currentUserId(request, users).pipe(
+          Effect.flatMap((uid) =>
+            activities.create(payload, uid).pipe(
+              Effect.map((view) => ({ data: toActivityDetailDto(view) })),
+            ),
+          ),
           Effect.mapError(toApiError),
-        )
-      })
-      .handle("enrollActivity", ({ path, request }) => {
-        const uid = activityCurrentUserId(request)
-        return activities.enroll(makeActivityId(path.id), uid).pipe(
-          Effect.map((view) => ({ data: toActivityDetailDto(view) })),
+        ),
+      )
+      .handle("enrollActivity", ({ path, request }) =>
+        currentUserId(request, users).pipe(
+          Effect.flatMap((uid) =>
+            activities.enroll(makeActivityId(path.id), uid).pipe(
+              Effect.map((view) => ({ data: toActivityDetailDto(view) })),
+            ),
+          ),
           Effect.mapError(toApiError),
-        )
-      })
-      .handle("cancelActivity", ({ path, request }) => {
-        const uid = activityCurrentUserId(request)
-        return activities.cancelEnrollment(makeActivityId(path.id), uid).pipe(
-          Effect.map((view) => ({ data: toActivityDetailDto(view) })),
+        ),
+      )
+      .handle("cancelActivity", ({ path, request }) =>
+        currentUserId(request, users).pipe(
+          Effect.flatMap((uid) =>
+            activities.cancelEnrollment(makeActivityId(path.id), uid).pipe(
+              Effect.map((view) => ({ data: toActivityDetailDto(view) })),
+            ),
+          ),
           Effect.mapError(toApiError),
-        )
-      })
+        ),
+      )
   }),
 )
 

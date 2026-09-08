@@ -1,6 +1,5 @@
-import { Headers, HttpApiEndpoint, HttpApiGroup, HttpApiSchema, Multipart } from "@effect/platform"
-import type { HttpServerRequest } from "@effect/platform"
-import { Option, Schema } from "effect"
+import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema, Multipart } from "@effect/platform"
+import { Schema } from "effect"
 
 import { ApiError, UnauthorizedError } from "../../../interface/apiError.js"
 import { HubInUse, SampleImageForbidden, SampleImageNotFound } from "../domain/errors.js"
@@ -8,11 +7,9 @@ import type { GroupProgress } from "../application/groupBuyService.js"
 import type { Film } from "../domain/film.js"
 import type { Hub } from "../domain/hub.js"
 /**
- * 当前用户身份（占位实现）：从 x-user-id 请求头读取，未登录默认 demo-user。
- * 后续接入 identity 上下文会话（微信登录）后替换。
+ * 当前用户身份：由组合根的 interface/auth.ts currentUserId 解析
+ * （Bearer token → 会话验证 → 真实 userId；匿名回退）。
  */
-export const currentUserId = (request: HttpServerRequest.HttpServerRequest): string =>
-  Option.getOrElse(Headers.get(request.headers, "x-user-id"), () => "demo-user")
 
 // ===== DTO（与 packages/contracts 保持同步） =====
 

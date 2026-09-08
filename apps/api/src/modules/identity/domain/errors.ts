@@ -7,20 +7,22 @@ import { UserId } from "./user.js"
 export class UserNotFound extends Schema.TaggedError<UserNotFound>("UserNotFound")(
   "UserNotFound",
   { userId: UserId },
+  HttpApiSchema.annotations({ status: 404 }),
 ) {}
 
 export class PhoneAlreadyRegistered extends Schema.TaggedError<PhoneAlreadyRegistered>(
   "PhoneAlreadyRegistered",
-)("PhoneAlreadyRegistered", { phone: PhoneNumber }) {}
+)("PhoneAlreadyRegistered", { phone: PhoneNumber }, HttpApiSchema.annotations({ status: 409 })) {}
 
 export class InvalidPhoneNumber extends Schema.TaggedError<InvalidPhoneNumber>(
   "InvalidPhoneNumber",
-)("InvalidPhoneNumber", { phone: Schema.String }) {}
+)("InvalidPhoneNumber", { phone: Schema.String }, HttpApiSchema.annotations({ status: 400 })) {}
 
-/** 密码强度不足（注册/重置时） */
+/** 密码强度不足（注册/重置时，400） */
 export class InvalidPassword extends Schema.TaggedError<InvalidPassword>("InvalidPassword")(
   "InvalidPassword",
   { reason: Schema.String },
+  HttpApiSchema.annotations({ status: 400 }),
 ) {}
 
 /** 手机号或密码错误（登录失败统一报此错，不区分"用户不存在/密码错"，防账号枚举探测） */

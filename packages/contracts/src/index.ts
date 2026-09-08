@@ -132,6 +132,18 @@ export interface UpdateFilmInput {
   scenarios?: string[]
 }
 
+/** 登录请求 */
+export interface LoginInput {
+  phone: string
+  password: string
+}
+
+/** 登录成功响应：不透明令牌 + 用户信息 */
+export interface LoginSuccessDto {
+  token: string
+  user: UserDto
+}
+
 /** [管理端] 新增商品（ID 由服务端生成；价格单位：分） */
 export interface CreateFilmInput {
   name: string

@@ -13,6 +13,8 @@ import type {
   GroupProgressDto,
   HealthDto,
   HubDto,
+  LoginInput,
+  LoginSuccessDto,
   SampleImageDto,
   UpdateFilmInput,
   UpdateHubInput,
@@ -39,6 +41,14 @@ const STORAGE_KEY = "evergrow-user-id"
 /** 管理端令牌的 localStorage 键（登录管理页时写入，删除样片等操作需要） */
 export const ADMIN_TOKEN_KEY = "evergrow-admin-token"
 
+/** 登录令牌的 localStorage 键（登录成功后写入，所有请求自动附带 Bearer） */
+export const AUTH_TOKEN_KEY = "evergrow-auth-token"
+
+/** 读取登录令牌（未登录返回空串） */
+function authToken(): string {
+  return localStorage.getItem(AUTH_TOKEN_KEY) ?? ""
+}
+
 /** 读取管理端令牌（未登录返回空串） */
 function adminToken(): string {
   return localStorage.getItem(ADMIN_TOKEN_KEY) ?? ""
@@ -61,6 +71,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     "x-user-id": currentUserId(),
     // 允许调用方附加请求头（如管理端 x-admin-token）
     ...((init?.headers as Record<string, string>) ?? {}),
+  }
+  // 登录令牌自动附带（后端据此解析真实用户身份；匿名请求无此头）
+  const token = authToken()
+  if (token && !headers["Authorization"]) {
+    headers["Authorization"] = `Bearer ${token}`
   }
   if (!(init?.body instanceof FormData) && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json"
@@ -88,11 +103,21 @@ function safeFileName(file: File): string {
 export const api = {
   health: () => request<HealthDto>("/health/"),
   getUser: (id: string) => request<{ data: UserDto }>(`/identity/users/${encodeURIComponent(id)}`),
-  register: (input: { phone: string; nickname: string }) =>
+  register: (input: { phone: string; nickname: string; password: string }) =>
     request<{ data: UserDto }>("/identity/users", {
       method: "POST",
       body: JSON.stringify(input),
     }),
+  login: (input: LoginInput) =>
+    request<{ data: LoginSuccessDto }>("/identity/sessions", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  logout: () =>
+    request<{ data: { loggedOut: boolean } }>("/identity/sessions", {
+      method: "DELETE",
+    }),
+  me: () => request<{ data: UserDto }>("/identity/me"),
 
   // ===== groupbuy（胶卷团购） =====
   listHubs: () => request<{ data: HubDto[] }>("/groupbuy/hubs"),

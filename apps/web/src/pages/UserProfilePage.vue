@@ -1,25 +1,22 @@
 <script setup lang="ts">
-import { ref } from "vue"
-import { NButton, NCard, NEmpty, NSpace } from "naive-ui"
+import { onMounted } from "vue"
+import { useRouter } from "vue-router"
+import { NButton, NCard, NDescriptions, NDescriptionsItem, NEmpty, NSpace, useMessage } from "naive-ui"
 
-import { api } from "@/api/client"
-import type { UserDto } from "@evergrow/contracts"
+import { useAuthStore } from "@/stores/auth"
 
-const profile = ref<UserDto | null>(null)
-const loading = ref(false)
-const error = ref("")
+const auth = useAuthStore()
+const router = useRouter()
+const message = useMessage()
 
-async function demoRegister() {
-  loading.value = true
-  error.value = ""
-  try {
-    const { data } = await api.register({ phone: "13800138000", nickname: "摄影团团用户" })
-    profile.value = data
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
-  } finally {
-    loading.value = false
-  }
+onMounted(() => {
+  void auth.fetchMe()
+})
+
+async function logout() {
+  await auth.logout()
+  message.success("已退出登录")
+  void router.push("/")
 }
 </script>
 
@@ -27,20 +24,39 @@ async function demoRegister() {
   <div class="page">
     <h2 class="page-title">我的</h2>
     <n-space vertical :size="16">
-      <n-button type="primary" :loading="loading" @click="demoRegister">
-        注册演示用户
-      </n-button>
-      <p v-if="error" class="error-text">{{ error }}</p>
-      <n-empty
-        v-if="!profile && !error"
-        description="还没有用户数据，点击上方按钮体验注册"
-      />
-      <n-card v-if="profile">
-        <p><strong>昵称：</strong>{{ profile.nickname }}</p>
-        <p><strong>手机号：</strong>{{ profile.phone }}</p>
-        <p><strong>状态：</strong>{{ profile.status }}</p>
-        <p><strong>ID：</strong>{{ profile.id }}</p>
+      <n-card v-if="auth.isLoggedIn && auth.user">
+        <n-descriptions :column="1" label-placement="left">
+          <n-descriptions-item label="昵称">{{ auth.user.nickname }}</n-descriptions-item>
+          <n-descriptions-item label="手机号">{{ auth.user.phone }}</n-descriptions-item>
+          <n-descriptions-item label="状态">
+            {{ auth.user.status === "Active" ? "正常" : auth.user.status }}
+          </n-descriptions-item>
+          <n-descriptions-item label="用户 ID">{{ auth.user.id }}</n-descriptions-item>
+        </n-descriptions>
+        <n-space style="margin-top: 16px">
+          <router-link to="/me/activities"><n-button quaternary>我的报名</n-button></router-link>
+          <n-button quaternary type="error" @click="logout">退出登录</n-button>
+        </n-space>
       </n-card>
+
+      <div v-else class="login-cta">
+        <n-empty description="登录后可参团、付订金、管理报名">
+          <template #extra>
+            <router-link to="/login?redirect=/me">
+              <n-button type="primary">去登录 / 注册</n-button>
+            </router-link>
+          </template>
+        </n-empty>
+      </div>
     </n-space>
   </div>
 </template>
+
+<style scoped>
+.login-cta {
+  background: #fff;
+  border: 1px solid #e8ede9;
+  border-radius: 14px;
+  padding: 48px 24px;
+}
+</style>

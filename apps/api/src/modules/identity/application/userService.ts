@@ -3,13 +3,14 @@ import { Clock, Effect, Option, Schema } from "effect"
 import type { PersistenceError } from "../../../shared/errors.js"
 import { IdGenerator } from "../../../shared/kernel.js"
 import { PhoneNumber } from "../../../shared/types.js"
+import type {
+  UserNotFound} from "../domain/errors.js";
 import {
   InvalidCredentials,
   InvalidPassword,
   InvalidPhoneNumber,
   PhoneAlreadyRegistered,
-  SessionInvalid,
-  UserNotFound,
+  SessionInvalid
 } from "../domain/errors.js"
 import { PasswordHasher } from "../domain/password.js"
 import { makePasswordHash } from "../domain/password.js"
