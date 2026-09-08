@@ -5,7 +5,7 @@
 
 ## 已实现能力
 
-- 位置点（Hub 聚合）：查看支持团购的位置点、加入位置点（去重、关闭校验）
+- 位置点（Hub 聚合）：查看支持团购的位置点、加入位置点（去重、关闭校验）；**管理端可增删改与开关**（`/admin/hubs`，存在参团记录时禁止删除）
 - 胶卷商品（Film 聚合）：特性 / 适用场景 / 冲洗工艺 / 135 与 120 画幅区分 / 真实商品图（Wikimedia Commons）
 - 拼团（GroupBuy 聚合）：加入心愿单 = 参团，**可指定数量**；成团按**累计件数**判定（Σ数量 ≥ threshold），自动成团并发出 `GroupBuySucceeded` 事件；参团记录携带订单摘要（单价 / 总价 / 订金 10% / 货到付款）与订金支付状态
 - 冲洗样片：multipart 上传（Effect `HttpApiSchema.Multipart`），本地磁盘存储（`ImageStorage` 端口，可替换 OSS），静态读取接口
@@ -40,3 +40,7 @@ interface/       GroupBuyApi（HttpApi 路由 + DTO + OpenAPI）
 | GET | /api/groupbuy/hubs/:hubId/films/:filmId/progress | 拼团进度 |
 | POST | /api/groupbuy/films/:filmId/images | 上传样片（multipart） |
 | GET | /api/groupbuy/images/:key 等 | 图片读取（uploads / films / demo） |
+| GET | /api/admin/groupbuy/hubs | [管理端] 位置点列表（含状态/创建时间） |
+| POST | /api/admin/groupbuy/hubs | [管理端] 新增位置点 |
+| PATCH | /api/admin/groupbuy/hubs/:hubId | [管理端] 编辑位置点（名称/城市/地址/状态） |
+| DELETE | /api/admin/groupbuy/hubs/:hubId | [管理端] 删除位置点（有参团记录时 409） |

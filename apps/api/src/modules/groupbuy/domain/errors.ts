@@ -18,6 +18,9 @@ export class FilmNotFound extends Schema.TaggedError<FilmNotFound>("FilmNotFound
   { filmId: FilmId },
 ) {}
 
+/** 位置点下存在参团记录，禁止删除（409 Conflict） */
+export class HubInUse extends Schema.TaggedError<HubInUse>("HubInUse")("HubInUse", { hubId: HubId }, HttpApiSchema.annotations({ status: 409 })) {}
+
 export class AlreadyJoinedHub extends Schema.TaggedError<AlreadyJoinedHub>(
   "AlreadyJoinedHub",
 )("AlreadyJoinedHub", { hubId: HubId }) {}

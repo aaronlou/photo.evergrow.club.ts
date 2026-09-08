@@ -23,7 +23,7 @@ const demoImage = (i: number): SampleImage => ({
 
 const cover = (name: string): string => `/api/groupbuy/images/films/${name}`
 
-const seedHubs = (now: Date): ReadonlyArray<Hub> => [
+export const seedHubs = (now: Date): ReadonlyArray<Hub> => [
   Hub.create({
     id: makeHubId("hub-sh-ja"),
     name: "上海·静安寺点",
@@ -1099,6 +1099,13 @@ export const HubRepositoryInMemory = Layer.effect(
       findById: (id: HubId) =>
         persistence(Ref.get(store).pipe(Effect.map((m) => Option.fromNullable(m.get(id))))),
       save: (hub: Hub) => persistence(Ref.update(store, (m) => m.set(hub.id, hub))),
+      delete: (id: HubId) =>
+        persistence(
+          Ref.update(store, (m) => {
+            m.delete(id)
+            return m
+          }),
+        ),
     })
   }),
 )

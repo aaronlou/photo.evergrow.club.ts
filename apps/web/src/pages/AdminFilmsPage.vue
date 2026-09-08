@@ -231,6 +231,7 @@ onMounted(() => {
         <h2 class="page-title">商品管理</h2>
         <p class="page-sub">维护胶卷商品的描述、特性、适用场景与封面图（仅限管理员）</p>
       </div>
+      <router-link to="/admin/hubs" class="admin-link">位置点管理 →</router-link>
     </div>
 
     <!-- 令牌门禁 -->
@@ -374,6 +375,13 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.admin-link {
+  font-size: 13px;
+  color: var(--evergrow-primary, #2f9e63);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
 .admin-token-gate {
   background: #fff;
   border: 1px solid #e8ede9;

@@ -3,12 +3,14 @@ import { Clock, Effect, Option } from "effect"
 import type { PersistenceError } from "../../../shared/errors.js"
 import { IdGenerator } from "../../../shared/kernel.js"
 import type { GroupBuySucceededEvent } from "../domain/events.js"
+import type {
+  FilmAlreadyExists} from "../domain/errors.js";
 import {
   AlreadyJoinedGroup,
   AlreadyJoinedHub,
-  FilmAlreadyExists,
   FilmNotFound,
   HubClosed,
+  HubInUse,
   HubNotFound,
   HubNotJoined,
   InvalidQuantity,
@@ -20,7 +22,8 @@ import type { FilmId, SampleImage } from "../domain/film.js"
 import { Film, makeFilmId } from "../domain/film.js"
 import type { DeliveryMode, GroupBuyStatus } from "../domain/groupBuy.js"
 import { GroupBuy } from "../domain/groupBuy.js"
-import type { Hub, HubId } from "../domain/hub.js"
+import type { HubId } from "../domain/hub.js"
+import { Hub, makeHubId } from "../domain/hub.js"
 import type { ImageUploadInput } from "../domain/imageStorage.js"
 import { ImageStorage } from "../domain/imageStorage.js"
 import { FilmRepository, GroupBuyRepository, HubRepository } from "../domain/repository.js"
@@ -135,6 +138,71 @@ export class GroupBuyService extends Effect.Service<GroupBuyService>()("GroupBuy
       /** 1. 查看支持团购的位置点 */
       listHubs: (_userId: string): Effect.Effect<ReadonlyArray<Hub>, PersistenceError> =>
         hubs.findAll(),
+
+      /** [管理端] 新增位置点：ID 由 city + name 生成 slug，冲突时追加随机后缀 */
+      createHub: (input: {
+        name: string
+        city: string
+        address: string
+      }): Effect.Effect<Hub, PersistenceError> =>
+        Effect.gen(function* () {
+          const base = ["hub", slug(input.city), slug(input.name)].filter(Boolean).join("-")
+          let id = makeHubId(base)
+          const existing = yield* hubs.findById(id)
+          if (Option.isSome(existing)) {
+            id = makeHubId(`${base}-${(yield* idgen.nextUUID).slice(0, 8)}`)
+          }
+          const hub = Hub.create({
+            id,
+            name: input.name,
+            city: input.city,
+            address: input.address,
+            createdAt: new Date(yield* Clock.currentTimeMillis),
+          })
+          yield* hubs.save(hub)
+          return hub
+        }),
+
+      /** [管理端] 更新位置点信息（名称 / 城市 / 地址 / 状态，仅传的字段生效） */
+      updateHub: (
+        hubId: HubId,
+        patch: {
+          name?: string
+          city?: string
+          address?: string
+          status?: "Active" | "Closed"
+        },
+      ): Effect.Effect<Hub, HubNotFound | PersistenceError> =>
+        Effect.gen(function* () {
+          const hub = yield* requireHub(hubId)
+          const updated = hub
+            .editInfo({ name: patch.name, city: patch.city, address: patch.address })
+            .setStatus(patch.status ?? hub.status)
+          yield* hubs.save(updated)
+          return updated
+        }),
+
+      /**
+       * [管理端] 删除位置点：该点下存在任何参团记录（有参与者）时拒绝删除，
+       * 避免拼团中的用户丢失参团进度。
+       */
+      deleteHub: (
+        hubId: HubId,
+      ): Effect.Effect<void, HubNotFound | HubInUse | PersistenceError> =>
+        Effect.gen(function* () {
+          yield* requireHub(hubId)
+          const allFilms = yield* films.findAll()
+          const groupsOfHub = yield* Effect.forEach(allFilms, (film) =>
+            groups.findByHubAndFilm(hubId, film.id),
+          )
+          const hasParticipants = groupsOfHub.some(
+            (group) => Option.isSome(group) && group.value.participantCount() > 0,
+          )
+          if (hasParticipants) {
+            return yield* Effect.fail(new HubInUse({ hubId }))
+          }
+          yield* hubs.delete(hubId)
+        }),
 
       /** 2. 加入某个位置点 */
       joinHub: (

@@ -51,4 +51,14 @@ export class Hub extends Schema.Class<Hub>("Hub")({
   join(userId: string): Hub {
     return new Hub({ ...this, joinedUserIds: [...this.joinedUserIds, userId] })
   }
+
+  /** [管理端] 编辑位置点信息（仅传的字段生效） */
+  editInfo(patch: { name?: string; city?: string; address?: string }): Hub {
+    return new Hub({ ...this, ...patch })
+  }
+
+  /** [管理端] 变更状态（开启 / 关闭） */
+  setStatus(status: HubStatus): Hub {
+    return new Hub({ ...this, status })
+  }
 }

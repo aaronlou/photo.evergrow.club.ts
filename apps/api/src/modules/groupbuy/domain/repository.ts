@@ -16,6 +16,7 @@ export class HubRepository extends Effect.Service<HubRepository>()("HubRepositor
       findById: (_id: HubId): Effect.Effect<Option.Option<Hub>, PersistenceError> =>
         Effect.succeed(Option.none()),
       save: (_hub: Hub): Effect.Effect<void, PersistenceError> => Effect.void,
+      delete: (_id: HubId): Effect.Effect<void, PersistenceError> => Effect.void,
     }
   }),
 }) {}

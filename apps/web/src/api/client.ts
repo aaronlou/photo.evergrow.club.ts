@@ -1,9 +1,11 @@
 import type {
   ActivityDetailDto,
   ActivityDto,
+  AdminHubDto,
   ApiErrorDto,
   CreateActivityInput,
   CreateFilmInput,
+  CreateHubInput,
   FilmCatalogDetailDto,
   FilmCatalogDto,
   FilmDetailDto,
@@ -13,6 +15,7 @@ import type {
   HubDto,
   SampleImageDto,
   UpdateFilmInput,
+  UpdateHubInput,
   UserDto,
 } from "@evergrow/contracts"
 
@@ -151,6 +154,28 @@ export const api = {
       method: "POST",
       headers: { "x-admin-token": adminToken },
       body: JSON.stringify(input),
+    }),
+  // ===== admin（位置点后台管理，需 x-admin-token） =====
+  listAdminHubs: (adminToken: string) =>
+    request<{ data: AdminHubDto[] }>("/admin/groupbuy/hubs", {
+      headers: { "x-admin-token": adminToken },
+    }),
+  createHub: (input: CreateHubInput, adminToken: string) =>
+    request<{ data: AdminHubDto }>("/admin/groupbuy/hubs", {
+      method: "POST",
+      headers: { "x-admin-token": adminToken },
+      body: JSON.stringify(input),
+    }),
+  updateHub: (id: string, input: UpdateHubInput, adminToken: string) =>
+    request<{ data: AdminHubDto }>(`/admin/groupbuy/hubs/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "x-admin-token": adminToken },
+      body: JSON.stringify(input),
+    }),
+  deleteHub: (id: string, adminToken: string) =>
+    request<{ data: { deleted: boolean } }>(`/admin/groupbuy/hubs/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers: { "x-admin-token": adminToken },
     }),
   updateFilm: (id: string, input: UpdateFilmInput, adminToken: string) =>
     request<{ data: FilmCatalogDetailDto }>(`/admin/groupbuy/films/${encodeURIComponent(id)}`, {

@@ -38,6 +38,33 @@ export interface HubDto {
   joinedByMe: boolean
 }
 
+/** [管理端] 位置点视图：含状态与创建时间（用户侧 HubDto 不暴露这些） */
+export interface AdminHubDto {
+  id: string
+  name: string
+  city: string
+  address: string
+  status: "Active" | "Closed"
+  memberCount: number
+  /** ISO 8601 日期字符串 */
+  createdAt: string
+}
+
+/** [管理端] 新增位置点（ID 由服务端生成） */
+export interface CreateHubInput {
+  name: string
+  city: string
+  address: string
+}
+
+/** [管理端] 更新位置点（仅传的字段生效） */
+export interface UpdateHubInput {
+  name?: string
+  city?: string
+  address?: string
+  status?: "Active" | "Closed"
+}
+
 /** 胶卷商品（列表项，含拼团进度） */
 export interface FilmDto {
   id: string

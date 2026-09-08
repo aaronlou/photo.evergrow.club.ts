@@ -1,4 +1,5 @@
-import { FileSystem, Headers, HttpServerRequest, HttpServerResponse } from "@effect/platform"
+import type { HttpServerRequest} from "@effect/platform";
+import { FileSystem, Headers, HttpServerResponse } from "@effect/platform"
 import { Config, Effect, Either, Layer, Logger, Option } from "effect"
 import { Clock } from "effect"
 import { HttpApiBuilder, HttpApiSwagger } from "@effect/platform"
@@ -8,8 +9,10 @@ import { dirname, join, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 
 import { Api } from "./api.js"
-import { ApiError, toApiError, UnauthorizedError } from "./interface/apiError.js"
+import type { ApiError} from "./interface/apiError.js";
+import { toApiError, UnauthorizedError } from "./interface/apiError.js"
 import { SampleImageForbidden, SampleImageNotFound } from "./modules/groupbuy/domain/errors.js"
+import { HubInUse } from "./modules/groupbuy/domain/errors.js"
 import { ActivityService } from "./modules/activity/application/activityService.js"
 import { makeActivityId } from "./modules/activity/domain/activity.js"
 import { ActivityRepositoryInMemory } from "./modules/activity/infrastructure/activityRepositoryInMemory.js"
@@ -29,8 +32,10 @@ import {
 } from "./modules/groupbuy/infrastructure/groupBuyInMemory.js"
 import { FilmRepositorySql } from "./modules/groupbuy/infrastructure/filmRepositorySql.js"
 import { ImageStorageLocal, uploadsDir } from "./modules/groupbuy/infrastructure/imageStorageLocal.js"
+import { HubRepositorySql } from "./modules/groupbuy/infrastructure/hubRepositorySql.js"
 import {
   currentUserId,
+  toAdminHubDto,
   toFilmCatalogDetailDto,
   toFilmCatalogDto,
   toFilmDetailDto,
@@ -306,6 +311,35 @@ const AdminGroupLive = HttpApiBuilder.group(Api, "admin", (handlers) =>
   Effect.gen(function* () {
     const groupBuy = yield* GroupBuyService
     return handlers
+      .handle("listHubs", ({ request }) =>
+        requireAdmin(request).pipe(
+          Effect.andThen(() => groupBuy.listHubs("admin")),
+          Effect.map((hubs) => ({ data: hubs.map((hub) => toAdminHubDto(hub)) })),
+          Effect.mapError(toAdminError),
+        ),
+      )
+      .handle("createHub", ({ request, payload }) =>
+        requireAdmin(request).pipe(
+          Effect.andThen(() => groupBuy.createHub(payload)),
+          Effect.map((hub) => ({ data: toAdminHubDto(hub) })),
+          Effect.mapError(toAdminError),
+        ),
+      )
+      .handle("updateHub", ({ path, request, payload }) =>
+        requireAdmin(request).pipe(
+          Effect.andThen(() => groupBuy.updateHub(makeHubId(path.hubId), payload)),
+          Effect.map((hub) => ({ data: toAdminHubDto(hub) })),
+          Effect.mapError(toAdminError),
+        ),
+      )
+      .handle("deleteHub", ({ path, request }) =>
+        requireAdmin(request).pipe(
+          Effect.andThen(() => groupBuy.deleteHub(makeHubId(path.hubId))),
+          Effect.map(() => ({ data: { deleted: true } })),
+          // 409 HubInUse 保持原始错误类型（带正确状态码），其余归一为 ApiError
+          Effect.mapError((e) => (e instanceof HubInUse ? e : toAdminError(e))),
+        ),
+      )
       .handle("createFilm", ({ request, payload }) =>
         requireAdmin(request).pipe(
           Effect.andThen(() => groupBuy.createFilm(payload)),
@@ -371,6 +405,15 @@ const FilmPersistenceLive = Layer.unwrapEffect(
   ),
 )
 
+/** groupbuy hub：仓储按 DATABASE_URL 切换（SQL 版空表自动种子；未配置回落内存） */
+const HubPersistenceLive = Layer.unwrapEffect(
+  Config.option(Config.string("DATABASE_URL")).pipe(
+    Effect.map((url) =>
+      Option.isSome(url) ? HubRepositorySql.pipe(Layer.provide(DbLive)) : HubRepositoryInMemory,
+    ),
+  ),
+)
+
 const ApiLive = HttpApiBuilder.api(Api).pipe(
   Layer.provide(HealthGroupLive),
   Layer.provide(IdentityGroupLive),
@@ -379,9 +422,9 @@ const ApiLive = HttpApiBuilder.api(Api).pipe(
   Layer.provide(AdminGroupLive),
   Layer.provide(UserService.Default),
   Layer.provide(PersistenceLive),
-  // groupbuy：hub/拼团进度用内存仓储；film 仓储按 DATABASE_URL 切换（管理端编辑持久化）
+  // groupbuy：hub/film 仓储按 DATABASE_URL 切换（管理端编辑持久化）；拼团进度暂用内存仓储
   Layer.provide(GroupBuyService.Default),
-  Layer.provide(HubRepositoryInMemory),
+  Layer.provide(HubPersistenceLive),
   Layer.provide(FilmPersistenceLive),
   Layer.provide(GroupBuyRepositoryInMemory),
   Layer.provide(ImageStorageLocal),

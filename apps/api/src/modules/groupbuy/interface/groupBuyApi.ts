@@ -3,11 +3,10 @@ import type { HttpServerRequest } from "@effect/platform"
 import { Option, Schema } from "effect"
 
 import { ApiError, UnauthorizedError } from "../../../interface/apiError.js"
-import { SampleImageForbidden, SampleImageNotFound } from "../domain/errors.js"
+import { HubInUse, SampleImageForbidden, SampleImageNotFound } from "../domain/errors.js"
 import type { GroupProgress } from "../application/groupBuyService.js"
 import type { Film } from "../domain/film.js"
 import type { Hub } from "../domain/hub.js"
-
 /**
  * 当前用户身份（占位实现）：从 x-user-id 请求头读取，未登录默认 demo-user。
  * 后续接入 identity 上下文会话（微信登录）后替换。
@@ -26,6 +25,19 @@ export const HubDto = Schema.Struct({
   joinedByMe: Schema.Boolean,
 })
 export type HubDto = Schema.Schema.Type<typeof HubDto>
+
+/** [管理端] 位置点视图：含状态与创建时间（用户侧 HubDto 不暴露这些） */
+export const AdminHubDto = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  city: Schema.String,
+  address: Schema.String,
+  status: Schema.Literal("Active", "Closed"),
+  memberCount: Schema.Int,
+  /** ISO 8601 字符串 */
+  createdAt: Schema.String,
+})
+export type AdminHubDto = Schema.Schema.Type<typeof AdminHubDto>
 
 export const SampleImageDto = Schema.Struct({
   id: Schema.String,
@@ -115,6 +127,16 @@ export const toHubDto = (hub: Hub, userId: string): HubDto => ({
   address: hub.address,
   memberCount: hub.memberCount(),
   joinedByMe: hub.hasJoined(userId),
+})
+
+export const toAdminHubDto = (hub: Hub): AdminHubDto => ({
+  id: hub.id,
+  name: hub.name,
+  city: hub.city,
+  address: hub.address,
+  status: hub.status,
+  memberCount: hub.memberCount(),
+  createdAt: hub.createdAt.toISOString(),
 })
 
 export const toFilmDto = (film: Film, progress: GroupProgress): FilmDto => ({
@@ -326,6 +348,42 @@ const AdminCreateFilmPayload = Schema.Struct({
 
 export const AdminApi = HttpApiGroup.make("admin")
   .add(
+    HttpApiEndpoint.get("listHubs", "/groupbuy/hubs")
+      .addSuccess(Schema.Struct({ data: Schema.Array(AdminHubDto) }))
+      .addError(ApiError)
+      .addError(UnauthorizedError),
+  )
+  .add(
+    HttpApiEndpoint.post("createHub", "/groupbuy/hubs")
+      .setPayload(Schema.Struct({ name: Schema.String, city: Schema.String, address: Schema.String }))
+      .addSuccess(Schema.Struct({ data: AdminHubDto }))
+      .addError(ApiError)
+      .addError(UnauthorizedError),
+  )
+  .add(
+    HttpApiEndpoint.patch("updateHub", "/groupbuy/hubs/:hubId")
+      .setPath(Schema.Struct({ hubId: Schema.String }))
+      .setPayload(
+        Schema.Struct({
+          name: Schema.optional(Schema.String),
+          city: Schema.optional(Schema.String),
+          address: Schema.optional(Schema.String),
+          status: Schema.optional(Schema.Literal("Active", "Closed")),
+        }),
+      )
+      .addSuccess(Schema.Struct({ data: AdminHubDto }))
+      .addError(ApiError)
+      .addError(UnauthorizedError),
+  )
+  .add(
+    HttpApiEndpoint.del("deleteHub", "/groupbuy/hubs/:hubId")
+      .setPath(Schema.Struct({ hubId: Schema.String }))
+      .addSuccess(Schema.Struct({ data: Schema.Struct({ deleted: Schema.Boolean }) }))
+      .addError(ApiError)
+      .addError(UnauthorizedError)
+      .addError(HubInUse),
+  )
+  .add(
     HttpApiEndpoint.post("createFilm", "/groupbuy/films")
       .setPayload(AdminCreateFilmPayload)
       .addSuccess(Schema.Struct({ data: FilmCatalogDetailDto }))
@@ -348,3 +406,4 @@ export const AdminApi = HttpApiGroup.make("admin")
       .addError(ApiError)
       .addError(UnauthorizedError),
   )
+ 
