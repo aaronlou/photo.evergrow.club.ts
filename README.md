@@ -1,110 +1,179 @@
-# 摄影团团圈 · EverGrow
+# EverGrow Photo Club · 摄影团团圈
 
-摄影爱好者的在线团购平台：拼团购买专业摄影服务（旅拍 / 写真 / 课程 / 器材）。
+A group-buying platform built for photography enthusiasts. The first shipping vertical is **analog film group-buying** — browse a global film catalog, pick a local pickup hub, join a group with your desired quantity, pay a 10% deposit, and the group auto-succeeds once the accumulated quantity hits the threshold. Around that core sit an AI-assisted **event publishing** module, a **user identity** system, and an **admin console**.
 
-- 前端：**Vue 3** + Vite + TypeScript + Pinia + Vue Router + Naive UI
-- 后端：**Node.js + TypeScript + Effect**，DDD 模块化单体（限界上下文模块化，可平滑拆分微服务）
-- 仓库：**pnpm workspaces + Turborepo** monorepo，前后端共享 API 契约（packages/contracts）
+## Highlights
 
-## 环境要求
+- **Film group buy (core business, live)**
+  - Global film catalog independent of hubs: Kodak / Fujifilm / Ilford / CineStill / Lomography / domestic brands, 135 & 120 formats, cover images (real product shots from Wikimedia Commons where available), per-film description / features / scenarios / process
+  - Hubs (city pickup points): list, join with closed-state validation; active hub persisted in localStorage
+  - Join a group buy = add to your wishlist with a **quantity**; auto **group success** when total quantity ≥ threshold (`GroupBuySucceeded` domain event)
+  - Deposit flow (10% of total, marked paid — no real payment gateway yet), COD delivery model, order summary on each participation record
+  - Sample-photo uploads (multipart) via a swappable image-storage port (local disk now, S3/MinIO/OSS ready)
+  - Per-hub group progress endpoint with polling support
+- **Activity context**: create / list / enroll / cancel events, with capacity limit + signup time-window rules and an auto-derived status machine (`NotStarted → Open → Full / Closed → Ended`)
+- **AI conversational activity drafting**: chat with the assistant to fill in an activity draft — LLM extractor (multi-provider) with a zero-dependency rule-based fallback; stateless multi-turn (the frontend holds the draft), `source` field for observability
+- **Identity**: phone + password registration/login, scrypt slow hashing, revocable opaque session tokens (logout kills the session)
+- **Admin console** (`/admin`, gated by `x-admin-token`): films (create / edit copy / upload covers), hub CRUD, registered-user list, and a live **LLM model registry** (add providers/models, hot-switch the default — secrets stay in environment variables)
+- Best-effort identity across APIs: valid Bearer token → real user; otherwise graceful anonymous fallback (stable `x-user-id`) — browse & join keep working before login
+- Zero-dependency dev mode: no `DATABASE_URL` configured ⇒ everything runs on in-memory repositories with seed data
 
-- Node.js **≥ 22.13**（配合 pnpm 11；本机可用 `nvm use 24`）
+## Tech stack
+
+| Layer | Choice |
+|---|---|
+| Frontend | Vue 3 · Vite · TypeScript · Pinia · Vue Router · Naive UI · @tanstack/vue-query |
+| Backend | Node.js ≥ 22 · TypeScript · **Effect 3.22** + `@effect/platform` + `@effect/sql` |
+| Architecture | DDD modular monolith (bounded contexts as modules, layers enforced by ESLint) |
+| Repo | pnpm workspaces + Turborepo monorepo; shared API contracts in `packages/contracts` |
+| Data | PostgreSQL (`@effect/sql-pg`) with in-memory fallback · Redis (scheduled M2) · local disk / MinIO image storage |
+| Deploy | GitHub Actions → GHCR images → `docker compose` on the server |
+
+## Repository layout
+
+```
+apps/
+  api/            # Backend: Effect + DDD modular monolith (composition root: src/main.ts)
+  web/            # Frontend: Vue 3 SPA (mobile-first H5, lazy-loaded pages)
+packages/
+  contracts/      # Shared, hand-written API contract types (both ends)
+  eslint-config/  # Shared ESLint config (incl. DDD boundary rules)
+docs/
+  architecture.md # Architecture & layering conventions
+  contexts.md     # Bounded contexts & context map
+  deploy.md       # Production deployment (GHCR image flow)
+```
+
+## Prerequisites
+
+- Node.js **≥ 22.13** (pnpm 11 is the package manager; `nvm use 24` works locally)
 - pnpm ≥ 11
-- Docker（可选，仅接入 PostgreSQL/Redis/MinIO 时需要）
+- Docker (optional — only needed for Postgres/Redis/MinIO)
 
-## 快速开始
+## Quick start
 
 ```bash
-# 1. 安装依赖
+# 1. Install dependencies
 pnpm install
 
-# 2. （可选）启动基础设施：Postgres / Redis / MinIO
+# 2. (Optional) Start infrastructure: Postgres / Redis / MinIO
 docker compose up -d
-cp .env.example .env        # 骨架阶段不接数据库也可直接运行
+cp .env.example .env      # Without a DB you can still run — see "Persistence modes"
 
-# 3. 启动开发服务（api: http://localhost:3000，web: http://localhost:5173）
+# 3. Start both dev servers (api → http://localhost:3000, web → http://localhost:5173)
 pnpm dev
 
-# 或分别启动
+# or individually
 pnpm --filter @evergrow/api dev
 pnpm --filter @evergrow/web dev
 ```
 
-打开 http://localhost:5173 即可看到前端页面（首页会显示后端连接状态）。
+Open http://localhost:5173 — the homepage shows backend connectivity.
 
-- API 文档（Swagger，由 Effect HttpApi 自动生成）：http://localhost:3000/docs
-- 健康检查：`curl http://localhost:3000/api/health`
+- Swagger/OpenAPI (auto-generated by Effect HttpApi): http://localhost:3000/docs
+- Health check: `curl http://localhost:3000/api/health`
 
-**注意**：骨架阶段后端默认使用**内存仓储**，无需数据库即可运行；接入 PostgreSQL 后切换方式见 `apps/api/src/shared/db.ts` 与各模块的 SQL 仓储实现。
+## Configuration (.env)
 
-## 常用命令
+See `.env.example` for the full set. Highlights:
+
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | When set, API uses PostgreSQL repositories; unset ⇒ in-memory repositories |
+| `PORT` | API port (default `3000`) |
+| `ADMIN_TOKEN` | Enables `/admin/*` endpoints, checked against the `x-admin-token` header. Empty ⇒ admin console disabled (secure default) |
+| `LLM_PROVIDER` / `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` / `LLM_TEMPERATURE` | Optional LLM access for AI features (`openai` \| `anthropic` \| `deepseek` \| `qwen` \| `tencent` \| `custom`). Secrets live here only — never in the DB or admin pages |
+| `S3_*` | S3-compatible object storage (MinIO locally / OSS in prod) for sample images |
+
+> If no `.env` exists the API still boots (since commit `c761770`); the frontend dev server proxies `/api` → `localhost:3000` via Vite.
+
+## Authentication model
+
+Progressive, best-effort identity resolution (`apps/api/src/interface/auth.ts`):
+
+- **Bearer token present & valid** → server-validated session → real `userId` (unforgeable)
+- **No / expired token** → anonymous fallback to a client-generated stable `x-user-id` (localStorage), so pre-login browsing and anonymous group-join keep working
+- Passwords: scrypt slow hash (self-describing `scrypt$N$r$p$salt$key`), constant-time compare
+- Sessions: opaque UUIDv4 tokens stored server-side — instantly revocable, 30-day expiry, logout deletes the row (no JWT by design: revocation > statelessness for this monolith)
+- Login-failure anti-enumeration: unknown phone / wrong password / disabled account all return `InvalidCredentials` (401)
+
+## Persistence modes
+
+Every bounded context follows the same pattern, chosen in the composition root by environment:
+
+- `DATABASE_URL` configured → `*RepositorySql` over PostgreSQL (`DbLive`); API container runs `apps/api/migrations/` on boot (Effect SQL Migrator, idempotent)
+- Not configured → in-memory repositories with seed data (films, hubs, activities) — zero-dependency local development
+
+## API overview
+
+All routes are mounted under `/api` (`apps/api/src/api.ts`). Auto-generated OpenAPI at `/docs`.
+
+| Area | Prefix | Notes |
+|---|---|---|
+| Health | `/api/health` | Liveness check |
+| Identity | `/api/identity/*` | `POST /users` register · `POST /sessions` login · `DELETE /sessions` logout · `GET /me` · `GET /users/:id` |
+| Group buy (user) | `/api/groupbuy/*` | Hubs, global film catalog & detail, per-hub film lists with group progress, join (quantity), pay-deposit, progress, sample-image upload, image serving |
+| Activity | `/api/activity/*` | `GET /activities`, `/mine`, `GET/POST /activities/:id`, enroll/cancel, `POST /ai/draft-chat` (conversational draft) |
+| Admin | `/api/admin/*` | `x-admin-token` gated — LLM models (`/llm/models…`), identity users, groupbuy hubs & films CRUD, film cover upload |
+
+Endpoint-level tables live in each module's README: `apps/api/src/modules/{identity,groupbuy,activity}/README.md`.
+
+## Common commands
 
 ```bash
-pnpm dev         # 并行启动 api + web 开发服务
-pnpm build       # 构建所有包（turbo 自动处理依赖顺序）
-pnpm typecheck   # 全量 TypeScript 检查
-pnpm test        # 运行测试（vitest）
-pnpm lint        # ESLint（含 DDD 分层边界规则）
+pnpm dev          # api + web together (turbo)
+pnpm build        # build all packages (turbo orders dependencies)
+pnpm typecheck    # full TypeScript check
+pnpm test         # vitest (apps/api/test: identity, groupBuy, activity)
+pnpm lint         # ESLint incl. DDD boundary rules
 ```
 
-## Docker 部署（镜像拉取版）
+## Docker deployment (pull-images flow)
 
-镜像由 **GitHub Actions** 构建并推送 GHCR（`.github/workflows/docker-build-push.yml`），服务器只需拉取镜像：
+Images are built by **GitHub Actions** and pushed to GHCR (`.github/workflows/docker-build-push.yml`); the server only pulls and orchestrates:
 
 ```bash
-docker compose -f docker-compose.prod.yml up -d   # 自动 pull + 启动 api/web/postgres/redis
+docker compose -f docker-compose.prod.yml up -d   # pulls + starts api/web/postgres/redis
 ```
 
-- 访问 `http://<服务器>:8080`（宿主机端口用 `WEB_PORT` 调整，如 `WEB_PORT=18080 docker compose -f docker-compose.prod.yml up -d`）
-- 数据库密码用 `POSTGRES_PASSWORD` 配置（默认 `evergrow`，生产务必修改）
-- **api 容器启动时自动执行 `apps/api/migrations/` 下的数据库迁移**（Effect SQL Migrator，幂等可重复执行）
-- 配置了 `DATABASE_URL` 时后端自动切换到 PostgreSQL 仓储；未配置则回落到内存仓储
-- 数据持久化在 `evergrow_pgdata` 卷；备份示例：`docker compose -f docker-compose.prod.yml exec postgres pg_dump -U evergrow evergrow > backup.sql`
-- 前端由 Nginx 托管并反向代理 `/api` 到 api 容器（SPA 路由回退已配置），api 不直接暴露到宿主机
+- Web is served by Nginx (`WEB_PORT` on the host, default `8080`), reverse-proxying `/api` → api container (SPA fallback configured); api is never exposed to the host directly
+- The api container runs DB migrations automatically at startup
+- Data persists in the `evergrow_pgdata` volume — see the `pg_dump` backup command in Maintenance below
+- **HTTPS**: the web container listens on :80 only — terminate TLS in front (e.g. `caddy reverse-proxy --from your-domain.com --to localhost:8080`)
 
-> GitHub 侧仓库权限 / GHCR 包可见性、服务器端登录与首次部署，见 **[docs/deploy.md](docs/deploy.md)**。
-
-### 生产 HTTPS
-
-compose 里的 web 容器只监听 80，对外建议加一层反向代理终止 TLS：
+Maintenance:
 
 ```bash
-# 服务器上用 Caddy（自动申请证书）
-caddy reverse-proxy --from your-domain.com --to localhost:8080
+docker compose -f docker-compose.prod.yml ps                 # status
+docker compose -f docker-compose.prod.yml logs -f api        # api logs
+docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d   # update
+docker compose -f docker-compose.prod.yml restart api        # rolling restart (re-runs migrations)
+docker compose -f docker-compose.prod.yml exec postgres pg_dump -U evergrow evergrow > backup.sql
 ```
 
-### 常用运维命令
+Full setup (GitHub permissions, GHCR visibility, server bootstrap, image-address overrides): **[docs/deploy.md](docs/deploy.md)**.
 
-```bash
-docker compose -f docker-compose.prod.yml ps                 # 状态
-docker compose -f docker-compose.prod.yml logs -f api        # api 日志
-docker compose -f docker-compose.prod.yml pull               # 拉取最新镜像
-docker compose -f docker-compose.prod.yml up -d              # 应用更新
-docker compose -f docker-compose.prod.yml restart api        # 滚动重启单个服务
-docker compose -f docker-compose.prod.yml down               # 停止（保留数据卷）
-```
+## Status & roadmap
 
-## 目录结构
+**Implemented**
 
-```
-apps/
-  api/            # 后端：Effect + DDD 模块化单体（组合根 src/main.ts）
-  web/            # 前端：Vue 3 单页应用
-packages/
-  contracts/      # 前后端共享 API 契约类型
-  eslint-config/  # 共享 ESLint 配置
-docs/
-  architecture.md # 架构与分层规范
-  contexts.md     # 限界上下文与上下文映射
-```
+- ✅ **Platform skeleton (M0)**: monorepo tooling, DDD template, full shared kernel (id generation, errors, config), Swagger
+- ✅ **identity**: registration/login/sessions, SQL + in-memory repositories — the reference module for all others
+- ✅ **groupbuy — analog film vertical**: global film catalog with real cover art + admin editing, hubs + join, quantity-based group buy with auto-success, deposit marking, sample-photo uploads, progress polling, admin CRUD + cover upload (live; currently seeds 68 real in-market films across 11 brands)
+- ✅ **activity**: create/enroll/cancel with capacity + signup windows, plus **AI conversational drafting** (LLM multi-provider with rule fallback, targeted follow-up questions, `source` observability)
+- ✅ **Admin console**: films / hubs / users / LLM-model pages with token gate
+- ✅ **Shared LLM layer**: model registry with hot-swappable default; secrets via env only
 
-后端模块组织与 DDD 分层规范详见 [docs/architecture.md](docs/architecture.md)；各限界上下文的规划见 [docs/contexts.md](docs/contexts.md) 与 `apps/api/src/modules/*/README.md`。
+**Planned** (placeholder modules already scaffolded under `apps/api/src/modules/*/`, see `docs/contexts.md`)
 
-## 当前进度
+- ⏳ M2: **ordering + payment + redemption** — the full checkout loop: group buy → order → pay → vouchers; WeChat/Alipay behind a payment ACL
+- ⏳ catalog beyond film: merchant photography services (portraits / travel shoots / courses / gear)
+- ⏳ M3: voucher redemption workflow + refunds driven by `GroupFailed` events
+- ⏳ M4: community (photo sharing / reviews) & marketing; WeChat login; stronger identity for "my participations"
 
-- ✅ **M0 骨架**：monorepo 工程化、DDD 分层模板、identity 上下文完整示例（内存 + SQL 双仓储适配器）、前后端契约与端到端联调
-- ✅ **activity 上下文**：活动创建与报名（名额上限 + 报名时间窗口），完整 DDD 模块 + 前端列表/详情/创建页（当前创建暂不鉴权）
-- ⏳ M1：catalog（商家 / 摄影套餐目录）
-- ⏳ M2：groupbuy + ordering + payment（核心业务闭环：拼团 → 下单 → 支付 → 成团）
-- ⏳ M3：redemption（券码核销）+ 管理端
-- ⏳ M4：community（作品分享 / 评价）与营销
+## Further reading
+
+- [docs/architecture.md](docs/architecture.md) — DDD layering, Effect conventions, pitfalls encountered
+- [docs/contexts.md](docs/contexts.md) — bounded contexts, context map, planned state machines
+- [docs/deploy.md](docs/deploy.md) — production deployment guide
+- Module READMEs under `apps/api/src/modules/*/` — per-context details and API tables
