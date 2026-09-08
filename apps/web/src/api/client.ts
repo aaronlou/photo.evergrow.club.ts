@@ -1,7 +1,11 @@
 import type {
   ActivityDetailDto,
+  ActivityDraft,
+  ActivityDraftChatResult,
   ActivityDto,
   AdminHubDto,
+  AdminLlmModelDto,
+  AdminLlmModelsDto,
   AdminUsersDto,
   ApiErrorDto,
   CreateActivityInput,
@@ -191,6 +195,40 @@ export const api = {
     request<{ data: AdminUsersDto }>("/admin/identity/users", {
       headers: { "x-admin-token": adminToken },
     }),
+  // ===== admin（LLM 模型配置，需 x-admin-token） =====
+  listLlmModels: (adminToken: string) =>
+    request<{ data: AdminLlmModelsDto }>("/admin/llm/models", {
+      headers: { "x-admin-token": adminToken },
+    }),
+  createLlmModel: (
+    input: { provider: string; model: string; label: string; baseUrl?: string; temperature: number },
+    adminToken: string,
+  ) =>
+    request<{ data: AdminLlmModelDto }>("/admin/llm/models", {
+      method: "POST",
+      headers: { "x-admin-token": adminToken },
+      body: JSON.stringify(input),
+    }),
+  updateLlmModel: (
+    id: string,
+    input: { label?: string; baseUrl?: string; temperature?: number; enabled?: boolean },
+    adminToken: string,
+  ) =>
+    request<{ data: AdminLlmModelDto }>(`/admin/llm/models/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "x-admin-token": adminToken },
+      body: JSON.stringify(input),
+    }),
+  deleteLlmModel: (id: string, adminToken: string) =>
+    request<{ data: { deleted: boolean } }>(`/admin/llm/models/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers: { "x-admin-token": adminToken },
+    }),
+  setDefaultLlmModel: (id: string, adminToken: string) =>
+    request<{ data: { ok: boolean } }>(`/admin/llm/models/${encodeURIComponent(id)}/default`, {
+      method: "POST",
+      headers: { "x-admin-token": adminToken },
+    }),
   createHub: (input: CreateHubInput, adminToken: string) =>
     request<{ data: AdminHubDto }>("/admin/groupbuy/hubs", {
       method: "POST",
@@ -232,6 +270,12 @@ export const api = {
     request<{ data: ActivityDetailDto }>("/activity/activities", {
       method: "POST",
       body: JSON.stringify(input),
+    }),
+  // [AI] 对话式创建：单轮"话 → 草稿补全"（草稿由前端持有，后端无状态）
+  aiDraftChat: (message: string, draft: ActivityDraft) =>
+    request<{ data: ActivityDraftChatResult }>("/activity/ai/draft-chat", {
+      method: "POST",
+      body: JSON.stringify({ message, draft }),
     }),
   enrollActivity: (id: string) =>
     request<{ data: ActivityDetailDto }>(

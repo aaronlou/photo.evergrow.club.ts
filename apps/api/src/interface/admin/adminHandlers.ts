@@ -13,6 +13,9 @@ import {
   toFilmCatalogDetailDto,
 } from "../../modules/groupbuy/interface/groupBuyApi.js"
 import { UserService } from "../../modules/identity/application/userService.js"
+import { LlmModelService } from "../../shared/llm/modelService.js"
+import type { LlmModel } from "../../shared/llm/model.js"
+import { makeLlmModelId } from "../../shared/llm/model.js"
 
 /**
  * 管理端鉴权：请求头 x-admin-token 必须等于 ADMIN_TOKEN 配置；
@@ -61,6 +64,19 @@ const withAdmin = <A, E>(
     }),
   )
 
+/** 模型 → DTO（不输出任何密钥；时间转 ISO 字符串） */
+const toLlmModelDto = (m: LlmModel) => ({
+  id: m.id,
+  provider: m.provider,
+  model: m.model,
+  label: m.label,
+  baseUrl: m.baseUrl,
+  temperature: m.temperature,
+  enabled: m.enabled,
+  isDefault: m.isDefault,
+  createdAt: m.createdAt.toISOString(),
+})
+
 /** 管理端错误映射：UnauthorizedError 保持 401，其余归一为 ApiError */
 const toAdminError = <E>(error: E): UnauthorizedError | ReturnType<typeof toApiError> =>
   error instanceof UnauthorizedError ? error : toApiError(error)
@@ -69,7 +85,43 @@ export const AdminGroupLive = HttpApiBuilder.group(Api, "admin", (handlers) =>
   Effect.gen(function* () {
     const groupBuy = yield* GroupBuyService
     const users = yield* UserService
+    const llmModels = yield* LlmModelService
     return handlers
+      // ----- LLM 模型配置 -----
+      .handle("listLlmModels", ({ request }) =>
+        withAdmin(request, "查看模型配置", Effect.all({
+          items: llmModels.list().pipe(Effect.map((list) => list.map(toLlmModelDto))),
+          endpoint: llmModels.endpoint(),
+        })).pipe(Effect.map((data) => ({ data })), Effect.mapError(toAdminError)),
+      )
+      .handle("createLlmModel", ({ request, payload }) =>
+        withAdmin(request, `新增模型 ${payload.model}`, llmModels.create(payload)).pipe(
+          Effect.map((m) => ({ data: toLlmModelDto(m) })),
+          Effect.mapError(toAdminError),
+        ),
+      )
+      .handle("updateLlmModel", ({ path, request, payload }) =>
+        withAdmin(
+          request,
+          `编辑模型 ${path.id}`,
+          llmModels.update(makeLlmModelId(path.id), payload),
+        ).pipe(
+          Effect.map((m) => ({ data: toLlmModelDto(m) })),
+          Effect.mapError(toAdminError),
+        ),
+      )
+      .handle("deleteLlmModel", ({ path, request }) =>
+        withAdmin(request, `删除模型 ${path.id}`, llmModels.remove(makeLlmModelId(path.id))).pipe(
+          Effect.map(() => ({ data: { deleted: true } })),
+          Effect.mapError(toAdminError),
+        ),
+      )
+      .handle("setDefaultLlmModel", ({ path, request }) =>
+        withAdmin(request, `设为默认模型 ${path.id}`, llmModels.setDefault(makeLlmModelId(path.id))).pipe(
+          Effect.map(() => ({ data: { ok: true } })),
+          Effect.mapError(toAdminError),
+        ),
+      )
       // ----- 用户管理 -----
       .handle("listUsers", ({ request }) =>
         withAdmin(request, "用户列表", users.listUsers()).pipe(

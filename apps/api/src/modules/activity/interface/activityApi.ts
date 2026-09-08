@@ -74,12 +74,48 @@ export const toActivityDetailDto = (view: ActivityView): ActivityDetailDto => ({
   createdBy: view.activity.createdBy,
 })
 
+// ===== AI 对话式创建（草稿对话） =====
+
+/** 活动草稿 Schema（可空字段 = 尚未确定；与 contracts 的 ActivityDraft 对应） */
+export const ActivityDraftSchema = Schema.Struct({
+  name: Schema.optional(Schema.String),
+  description: Schema.optional(Schema.String),
+  location: Schema.optional(Schema.String),
+  coverImageUrl: Schema.optional(Schema.String),
+  startAt: Schema.optional(Schema.String),
+  endAt: Schema.optional(Schema.String),
+  signupStartAt: Schema.optional(Schema.String),
+  signupEndAt: Schema.optional(Schema.String),
+  capacity: Schema.optional(Schema.Int),
+})
+
 // ===== HTTP API（自动生成 OpenAPI） =====
 
 export const ActivityApi = HttpApiGroup.make("activity")
   .add(
     HttpApiEndpoint.get("listActivities", "/activities")
       .addSuccess(Schema.Struct({ data: Schema.Array(ActivityDto) }))
+      .addError(ApiError),
+  )
+  .add(
+    // [AI] 对话式创建：单轮"话 → 草稿补全"。无状态多轮（草稿由前端持有）
+    HttpApiEndpoint.post("aiDraftChat", "/ai/draft-chat")
+      .setPayload(
+        Schema.Struct({
+          message: Schema.String,
+          draft: ActivityDraftSchema,
+        }),
+      )
+      .addSuccess(
+        Schema.Struct({
+          data: Schema.Struct({
+            draft: ActivityDraftSchema,
+            reply: Schema.String,
+            missing: Schema.Array(Schema.String),
+            complete: Schema.Boolean,
+          }),
+        }),
+      )
       .addError(ApiError),
   )
   .add(

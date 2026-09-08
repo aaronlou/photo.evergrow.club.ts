@@ -17,6 +17,7 @@ const navItems = [
   { to: "/admin/films", label: "商品管理" },
   { to: "/admin/hubs", label: "位置点管理" },
   { to: "/admin/users", label: "用户管理" },
+  { to: "/admin/llm", label: "模型配置" },
 ]
 </script>
 

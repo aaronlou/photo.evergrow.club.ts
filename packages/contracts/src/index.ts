@@ -74,6 +74,33 @@ export interface AdminUsersDto {
   items: AdminUserDto[]
 }
 
+/** 支持的 LLM 提供商（与后端 shared/llm/model.ts 的 LlmProvider 保持同步） */
+export type LlmProviderDto = "openai" | "anthropic" | "deepseek" | "qwen" | "tencent" | "custom"
+
+/** [管理端] LLM 模型配置（不含任何密钥；baseUrl 空 = 使用默认接入点） */
+export interface AdminLlmModelDto {
+  id: string
+  provider: LlmProviderDto
+  model: string
+  label: string
+  /** 自定义接入点（空 = 回落环境变量/厂商默认） */
+  baseUrl: string
+  temperature: number
+  enabled: boolean
+  isDefault: boolean
+  createdAt: string
+}
+
+/** [管理端] LLM 模型列表 + 当前接入点（接入点来自环境变量，用于提示模型兼容性） */
+export interface AdminLlmModelsDto {
+  items: AdminLlmModelDto[]
+  endpoint: {
+    provider: string
+    baseUrl: string
+    fallbackModel: string
+  }
+}
+
 /** [管理端] 更新位置点（仅传的字段生效） */
 export interface UpdateHubInput {
   name?: string
@@ -241,4 +268,40 @@ export interface CreateActivityInput {
   signupStartAt: string
   signupEndAt: string
   capacity: number
+}
+
+/**
+ * [AI 对话式创建] 活动草稿：可空字段 = 尚未确定。
+ * AI 只负责"填草稿"，最终提交仍走 createActivity（业务规则只校验一次）。
+ */
+export interface ActivityDraft {
+  name?: string
+  description?: string
+  location?: string
+  coverImageUrl?: string
+  /** ISO 8601 字符串 */
+  startAt?: string
+  endAt?: string
+  signupStartAt?: string
+  signupEndAt?: string
+  capacity?: number
+}
+
+/** [AI 对话式创建] 单轮对话请求（草稿由前端持有，后端无状态） */
+export interface ActivityDraftChatInput {
+  message: string
+  /** 当前草稿（可为空对象） */
+  draft: ActivityDraft
+}
+
+/** [AI 对话式创建] 单轮对话响应 */
+export interface ActivityDraftChatResult {
+  /** 合并后的最新草稿 */
+  draft: ActivityDraft
+  /** 助手回复（提取结果汇报 / 追问） */
+  reply: string
+  /** 仍缺失的必填字段（中文标签） */
+  missing: string[]
+  /** 草稿是否完备（可提交） */
+  complete: boolean
 }

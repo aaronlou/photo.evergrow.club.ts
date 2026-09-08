@@ -54,6 +54,7 @@ const router = createRouter({
             { path: "films", name: "admin-films", component: () => import("@/pages/admin/FilmsPage.vue") },
             { path: "hubs", name: "admin-hubs", component: () => import("@/pages/admin/HubsPage.vue") },
             { path: "users", name: "admin-users", component: () => import("@/pages/admin/UsersPage.vue") },
+            { path: "llm", name: "admin-llm", component: () => import("@/pages/admin/LlmModelsPage.vue") },
           ],
         },
       ],

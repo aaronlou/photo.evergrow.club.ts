@@ -13,8 +13,12 @@ import { AdminGroupLive, requireAdmin } from "./interface/admin/adminHandlers.js
 import { currentUserId } from "./interface/auth.js"
 import { SampleImageForbidden, SampleImageNotFound } from "./modules/groupbuy/domain/errors.js"
 import { ActivityService } from "./modules/activity/application/activityService.js"
+import { ActivityDraftAssistant } from "./modules/activity/application/activityDraftAssistant.js"
 import { makeActivityId } from "./modules/activity/domain/activity.js"
 import { ActivityRepositoryInMemory } from "./modules/activity/infrastructure/activityRepositoryInMemory.js"
+import { RuleBasedDraftExtractor } from "./modules/activity/infrastructure/aiExtractors.js"
+import { LlmDraftExtractor } from "./modules/activity/infrastructure/llmDraftExtractor.js"
+import type { ActivityDraftExtractor } from "./modules/activity/domain/aiExtractor.js"
 import { ActivityRepositorySql } from "./modules/activity/infrastructure/activityRepositorySql.js"
 import {
   toActivityDetailDto,
@@ -57,6 +61,10 @@ import { UserRepositorySql } from "./modules/identity/infrastructure/userReposit
 import { toUserDto } from "./modules/identity/interface/identityApi.js"
 import { DbLive } from "./shared/db.js"
 import { IdGenerator } from "./shared/kernel.js"
+import { llmLiveFromEnv } from "./shared/llm/live.js"
+import { LlmModelRepositoryInMemory } from "./shared/llm/modelRepositoryInMemory.js"
+import { LlmModelRepositorySql } from "./shared/llm/modelRepositorySql.js"
+import { LlmModelService } from "./shared/llm/modelService.js"
 
 /**
  * 组合根（Composition Root）：唯一允许跨层装配的地方。
@@ -299,8 +307,17 @@ const GroupBuyGroupLive = HttpApiBuilder.group(Api, "groupbuy", (handlers) =>
 const ActivityGroupLive = HttpApiBuilder.group(Api, "activity", (handlers) =>
   Effect.gen(function* () {
     const activities = yield* ActivityService
+    const assistant = yield* ActivityDraftAssistant
     const users = yield* UserService
     return handlers
+      .handle("aiDraftChat", ({ payload }) =>
+        assistant
+          .chat({ message: payload.message, draft: payload.draft })
+          .pipe(
+            Effect.map((result) => ({ data: result })),
+            Effect.mapError(toApiError),
+          ),
+      )
       .handle("listActivities", ({ request }) =>
         currentUserId(request, users).pipe(
           Effect.flatMap((uid) =>
@@ -379,6 +396,47 @@ const ActivityLive = ActivityService.Default.pipe(
 )
 
 /**
+ * AI 草稿助手装配：
+ * - 配置了 LLM_PROVIDER + LLM_API_KEY → LLM 提取器（按 provider 选提供商适配器）
+ * - 未配置 → 规则解析提取器（零外部依赖，本地开发与演示可直接跑）
+ * 业务代码（ActivityDraftAssistant）对"用哪种 AI"完全无感。
+ */
+const ActivityDraftExtractorLive = Layer.unwrapEffect(
+  llmLiveFromEnv.pipe(
+    Effect.map((maybeLlm) =>
+      Option.match(maybeLlm, {
+        onNone: () => RuleBasedDraftExtractor as Layer.Layer<ActivityDraftExtractor>,
+        onSome: (llm) =>
+          // LLM 版同时依赖 LlmClient（连接，来自环境变量）+ LlmModelRepository（默认模型，来自数据库）
+          LlmDraftExtractor.pipe(
+            Layer.provide(llm),
+            Layer.provide(LlmModelPersistenceLive),
+          ) as Layer.Layer<ActivityDraftExtractor>,
+      }),
+    ),
+  ),
+)
+
+const ActivityAssistantLive = ActivityDraftAssistant.Default.pipe(
+  Layer.provide(ActivityDraftExtractorLive),
+)
+
+/** shared/llm 模型配置：仓储按 DATABASE_URL 切换（未配置回落内存，重启即丢） */
+const LlmModelPersistenceLive = Layer.unwrapEffect(
+  Config.option(Config.string("DATABASE_URL")).pipe(
+    Effect.map((url) =>
+      Option.isSome(url)
+        ? LlmModelRepositorySql.pipe(Layer.provide(DbLive))
+        : LlmModelRepositoryInMemory,
+    ),
+  ),
+)
+
+const LlmModelServiceLive = LlmModelService.Default.pipe(
+  Layer.provide(LlmModelPersistenceLive),
+)
+
+/**
  * 数据接入装配（组合根按环境选择适配器）：
  * - 配置了 DATABASE_URL → PostgreSQL（DbLive + UserRepositorySql）
  * - 未配置 → 内存仓储（本地开发零依赖启动）
@@ -436,6 +494,10 @@ const ApiLive = HttpApiBuilder.api(Api).pipe(
   Layer.provide(NodePath.layer),
   // activity：仓储按 DATABASE_URL 切换（内存 / SQL）
   Layer.provide(ActivityLive),
+  // AI 草稿助手：默认装配规则解析版；接入 LLM 后在此按 API key 切换适配器
+  Layer.provide(ActivityAssistantLive),
+  // LLM 模型配置服务（管理端可增删改模型 / 切换默认，密钥仍走环境变量）
+  Layer.provide(LlmModelServiceLive),
   // IdGenerator 最后提供：满足前面所有 Default 层对它的依赖
   Layer.provide(IdGenerator.Default),
   // 密码哈希（scrypt）：身份认证的基础设施适配器

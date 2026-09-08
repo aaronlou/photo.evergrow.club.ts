@@ -4,6 +4,7 @@ import { Schema } from "effect"
 import { ApiError, UnauthorizedError } from "../apiError.js"
 import { HubInUse } from "../../modules/groupbuy/domain/errors.js"
 import { FilmCatalogDetailDto } from "../../modules/groupbuy/interface/groupBuyApi.js"
+import { LlmProvider } from "../../shared/llm/model.js"
 
 /**
  * 运营后台门面（跨上下文）：聚合 groupbuy / identity 各上下文的管理用例。
@@ -42,6 +43,31 @@ export const AdminUserDto = Schema.Struct({
 })
 export type AdminUserDto = Schema.Schema.Type<typeof AdminUserDto>
 
+/** [管理端] 模型配置视图（不含任何密钥；baseUrl 空 = 使用默认接入点） */
+export const AdminLlmModelDto = Schema.Struct({
+  id: Schema.String,
+  provider: LlmProvider,
+  model: Schema.String,
+  label: Schema.String,
+  /** 自定义接入点（空 = 回落环境变量/厂商默认） */
+  baseUrl: Schema.String,
+  temperature: Schema.Number,
+  enabled: Schema.Boolean,
+  isDefault: Schema.Boolean,
+  createdAt: Schema.String,
+})
+export type AdminLlmModelDto = Schema.Schema.Type<typeof AdminLlmModelDto>
+
+/** [管理端] 模型列表 + 当前接入点（接入点来自环境变量，页面据此判断模型兼容性） */
+export const AdminLlmModelsDto = Schema.Struct({
+  items: Schema.Array(AdminLlmModelDto),
+  endpoint: Schema.Struct({
+    provider: Schema.String,
+    baseUrl: Schema.String,
+    fallbackModel: Schema.String,
+  }),
+})
+
 // ===== [管理端] 商品负载 =====
 
 /** 更新商品文案：仅传的字段生效 */
@@ -76,6 +102,57 @@ const AdminCreateFilmPayload = Schema.Struct({
 
 /** 运营后台 HTTP API（统一前缀 /admin，自动生成 OpenAPI） */
 export const AdminApi = HttpApiGroup.make("admin")
+  // ----- LLM 模型配置（shared/llm 通用域） -----
+  .add(
+    HttpApiEndpoint.get("listLlmModels", "/llm/models")
+      .addSuccess(Schema.Struct({ data: AdminLlmModelsDto }))
+      .addError(ApiError)
+      .addError(UnauthorizedError),
+  )
+  .add(
+    HttpApiEndpoint.post("createLlmModel", "/llm/models")
+      .setPayload(
+        Schema.Struct({
+          provider: LlmProvider,
+          model: Schema.String,
+          label: Schema.String,
+          baseUrl: Schema.optional(Schema.String),
+          temperature: Schema.Number,
+        }),
+      )
+      .addSuccess(Schema.Struct({ data: AdminLlmModelDto }))
+      .addError(ApiError)
+      .addError(UnauthorizedError),
+  )
+  .add(
+    HttpApiEndpoint.patch("updateLlmModel", "/llm/models/:id")
+      .setPath(Schema.Struct({ id: Schema.String }))
+      .setPayload(
+        Schema.Struct({
+          label: Schema.optional(Schema.String),
+          baseUrl: Schema.optional(Schema.String),
+          temperature: Schema.optional(Schema.Number),
+          enabled: Schema.optional(Schema.Boolean),
+        }),
+      )
+      .addSuccess(Schema.Struct({ data: AdminLlmModelDto }))
+      .addError(ApiError)
+      .addError(UnauthorizedError),
+  )
+  .add(
+    HttpApiEndpoint.del("deleteLlmModel", "/llm/models/:id")
+      .setPath(Schema.Struct({ id: Schema.String }))
+      .addSuccess(Schema.Struct({ data: Schema.Struct({ deleted: Schema.Boolean }) }))
+      .addError(ApiError)
+      .addError(UnauthorizedError),
+  )
+  .add(
+    HttpApiEndpoint.post("setDefaultLlmModel", "/llm/models/:id/default")
+      .setPath(Schema.Struct({ id: Schema.String }))
+      .addSuccess(Schema.Struct({ data: Schema.Struct({ ok: Schema.Boolean }) }))
+      .addError(ApiError)
+      .addError(UnauthorizedError),
+  )
   // ----- 用户管理（identity 上下文） -----
   .add(
     HttpApiEndpoint.get("listUsers", "/identity/users")
