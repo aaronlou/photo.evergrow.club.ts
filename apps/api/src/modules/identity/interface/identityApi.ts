@@ -32,7 +32,7 @@ export const IdentityApi = HttpApiGroup.make("identity")
   )
   .add(
     HttpApiEndpoint.post("register", "/users")
-      .setPayload(Schema.Struct({ phone: Schema.String, nickname: Schema.String }))
+      .setPayload(Schema.Struct({ phone: Schema.String, nickname: Schema.String, password: Schema.String }))
       .addSuccess(Schema.Struct({ data: UserDto }))
       .addError(ApiError),
   )

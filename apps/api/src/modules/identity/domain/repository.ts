@@ -3,6 +3,7 @@ import { Effect, Option } from "effect"
 import type { PersistenceError } from "../../../shared/errors.js"
 import type { PhoneNumber } from "../../../shared/types.js"
 import { UserNotFound } from "./errors.js"
+import type { Session } from "./session.js"
 import type { User, UserId } from "./user.js"
 
 /**
@@ -20,6 +21,21 @@ export class UserRepository extends Effect.Service<UserRepository>()("UserReposi
         Effect.succeed(Option.none()),
 
       save: (_user: User): Effect.Effect<void, PersistenceError> => Effect.void,
+    }
+  }),
+}) {}
+
+/**
+ * SessionRepository 端口：会话的存取。
+ * delete 语义为幂等（登出时记录不存在也视为成功）。
+ */
+export class SessionRepository extends Effect.Service<SessionRepository>()("SessionRepository", {
+  effect: Effect.gen(function* () {
+    return {
+      findByToken: (_token: string): Effect.Effect<Option.Option<Session>, PersistenceError> =>
+        Effect.succeed(Option.none()),
+      save: (_session: Session): Effect.Effect<void, PersistenceError> => Effect.void,
+      delete: (_token: string): Effect.Effect<void, PersistenceError> => Effect.void,
     }
   }),
 }) {}

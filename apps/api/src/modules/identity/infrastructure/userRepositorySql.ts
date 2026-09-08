@@ -31,6 +31,7 @@ export const UserRepositorySql = Layer.effect(
       phone: string
       nickname: string
       avatar_url: string
+      password_hash: string | null
       status: string
       created_at: Date
     }): User =>
@@ -39,6 +40,7 @@ export const UserRepositorySql = Layer.effect(
         phone: makePhoneNumber(row.phone),
         nickname: row.nickname,
         avatarUrl: row.avatar_url ?? "",
+        passwordHash: row.password_hash ?? "",
         status: row.status as UserStatus,
         createdAt: row.created_at,
       })
@@ -47,7 +49,7 @@ export const UserRepositorySql = Layer.effect(
       findById: (id: UserId): Effect.Effect<User, UserNotFound | PersistenceError> =>
         Effect.gen(function* () {
           const rows = yield* query(
-            sql`SELECT id, phone, nickname, avatar_url, status, created_at FROM users WHERE id = ${id}`,
+            sql`SELECT id, phone, nickname, avatar_url, password_hash, status, created_at FROM users WHERE id = ${id}`,
           )
           const row = rows[0]
           if (!row) {
@@ -59,7 +61,7 @@ export const UserRepositorySql = Layer.effect(
       findByPhone: (phone: PhoneNumber): Effect.Effect<Option.Option<User>, PersistenceError> =>
         Effect.gen(function* () {
           const rows = yield* query(
-            sql`SELECT id, phone, nickname, avatar_url, status, created_at FROM users WHERE phone = ${phone}`,
+            sql`SELECT id, phone, nickname, avatar_url, password_hash, status, created_at FROM users WHERE phone = ${phone}`,
           )
           const row = rows[0]
           if (!row) {
@@ -70,7 +72,13 @@ export const UserRepositorySql = Layer.effect(
 
       save: (user: User): Effect.Effect<void, PersistenceError> =>
         query(
-          sql`INSERT INTO users (id, phone, nickname, avatar_url, status, created_at) VALUES (${user.id}, ${user.phone}, ${user.nickname}, ${user.avatarUrl}, ${user.status}, ${user.createdAt})`,
+          sql`INSERT INTO users (id, phone, nickname, avatar_url, password_hash, status, created_at) VALUES (${user.id}, ${user.phone}, ${user.nickname}, ${user.avatarUrl}, ${user.passwordHash}, ${user.status}, ${user.createdAt})
+              ON CONFLICT (id) DO UPDATE SET
+                phone = EXCLUDED.phone,
+                nickname = EXCLUDED.nickname,
+                avatar_url = EXCLUDED.avatar_url,
+                password_hash = EXCLUDED.password_hash,
+                status = EXCLUDED.status`,
         ).pipe(Effect.asVoid),
     })
   }),

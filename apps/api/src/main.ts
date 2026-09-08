@@ -45,6 +45,9 @@ import {
 } from "./modules/groupbuy/interface/groupBuyApi.js"
 import { UserService } from "./modules/identity/application/userService.js"
 import { makeUserId } from "./modules/identity/domain/user.js"
+import { PasswordHasherScrypt } from "./modules/identity/infrastructure/passwordHasherScrypt.js"
+import { SessionRepositoryInMemory } from "./modules/identity/infrastructure/sessionRepositoryInMemory.js"
+import { SessionRepositorySql } from "./modules/identity/infrastructure/sessionRepositorySql.js"
 import { UserRepositoryInMemory } from "./modules/identity/infrastructure/userRepositoryInMemory.js"
 import { UserRepositorySql } from "./modules/identity/infrastructure/userRepositorySql.js"
 import { toUserDto } from "./modules/identity/interface/identityApi.js"
@@ -396,6 +399,15 @@ const PersistenceLive = Layer.unwrapEffect(
   ),
 )
 
+/** identity session：仓储按 DATABASE_URL 切换（未配置回落内存，重启即失效） */
+const SessionPersistenceLive = Layer.unwrapEffect(
+  Config.option(Config.string("DATABASE_URL")).pipe(
+    Effect.map((url) =>
+      Option.isSome(url) ? SessionRepositorySql.pipe(Layer.provide(DbLive)) : SessionRepositoryInMemory,
+    ),
+  ),
+)
+
 /** groupbuy film：仓储按 DATABASE_URL 切换（SQL 版空表自动种子；未配置回落内存） */
 const FilmPersistenceLive = Layer.unwrapEffect(
   Config.option(Config.string("DATABASE_URL")).pipe(
@@ -434,6 +446,10 @@ const ApiLive = HttpApiBuilder.api(Api).pipe(
   Layer.provide(ActivityLive),
   // IdGenerator 最后提供：满足前面所有 Default 层对它的依赖
   Layer.provide(IdGenerator.Default),
+  // 密码哈希（scrypt）：身份认证的基础设施适配器
+  Layer.provide(PasswordHasherScrypt),
+  // 登录会话：仓储按 DATABASE_URL 切换
+  Layer.provide(SessionPersistenceLive),
 )
 
 const ServerLive = HttpApiBuilder.serve().pipe(
