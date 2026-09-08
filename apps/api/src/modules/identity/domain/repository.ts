@@ -20,6 +20,8 @@ export class UserRepository extends Effect.Service<UserRepository>()("UserReposi
       findByPhone: (_phone: PhoneNumber): Effect.Effect<Option.Option<User>, PersistenceError> =>
         Effect.succeed(Option.none()),
 
+      findAll: (): Effect.Effect<ReadonlyArray<User>, PersistenceError> => Effect.succeed([]),
+
       save: (_user: User): Effect.Effect<void, PersistenceError> => Effect.void,
     }
   }),

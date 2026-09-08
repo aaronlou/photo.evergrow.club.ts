@@ -33,6 +33,9 @@ export const UserRepositoryInMemory = Layer.effect(
           ),
         ),
 
+      findAll: (): Effect.Effect<ReadonlyArray<User>> =>
+        Ref.get(store).pipe(Effect.map((users) => [...users.values()])),
+
       save: (user: User): Effect.Effect<void> =>
         Ref.update(store, (users) => users.set(user.id, user)),
     })

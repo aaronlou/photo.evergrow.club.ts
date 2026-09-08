@@ -343,7 +343,32 @@ const AdminCreateFilmPayload = Schema.Struct({
   scenarios: Schema.optional(Schema.Array(Schema.String)),
 })
 
+/** [管理端] 注册用户视图：含注册时间与密码设置状态（绝不包含密码密文） */
+export const AdminUserDto = Schema.Struct({
+  id: Schema.String,
+  phone: Schema.String,
+  nickname: Schema.String,
+  status: Schema.Literal("Active", "Disabled"),
+  hasPassword: Schema.Boolean,
+  /** ISO 8601 字符串 */
+  createdAt: Schema.String,
+})
+export type AdminUserDto = Schema.Schema.Type<typeof AdminUserDto>
+
 export const AdminApi = HttpApiGroup.make("admin")
+  .add(
+    HttpApiEndpoint.get("listUsers", "/identity/users")
+      .addSuccess(
+        Schema.Struct({
+          data: Schema.Struct({
+            total: Schema.Int,
+            items: Schema.Array(AdminUserDto),
+          }),
+        }),
+      )
+      .addError(ApiError)
+      .addError(UnauthorizedError),
+  )
   .add(
     HttpApiEndpoint.get("listHubs", "/groupbuy/hubs")
       .addSuccess(Schema.Struct({ data: Schema.Array(AdminHubDto) }))

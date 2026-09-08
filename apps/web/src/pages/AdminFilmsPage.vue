@@ -232,6 +232,7 @@ onMounted(() => {
         <p class="page-sub">维护胶卷商品的描述、特性、适用场景与封面图（仅限管理员）</p>
       </div>
       <router-link to="/admin/hubs" class="admin-link">位置点管理 →</router-link>
+      <router-link to="/admin/users" class="admin-link" style="margin-left: 14px">用户管理 →</router-link>
     </div>
 
     <!-- 令牌门禁 -->

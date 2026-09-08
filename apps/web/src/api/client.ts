@@ -2,6 +2,7 @@ import type {
   ActivityDetailDto,
   ActivityDto,
   AdminHubDto,
+  AdminUsersDto,
   ApiErrorDto,
   CreateActivityInput,
   CreateFilmInput,
@@ -183,6 +184,11 @@ export const api = {
   // ===== admin（位置点后台管理，需 x-admin-token） =====
   listAdminHubs: (adminToken: string) =>
     request<{ data: AdminHubDto[] }>("/admin/groupbuy/hubs", {
+      headers: { "x-admin-token": adminToken },
+    }),
+  // ===== admin（注册用户管理，需 x-admin-token） =====
+  listAdminUsers: (adminToken: string) =>
+    request<{ data: AdminUsersDto }>("/admin/identity/users", {
       headers: { "x-admin-token": adminToken },
     }),
   createHub: (input: CreateHubInput, adminToken: string) =>

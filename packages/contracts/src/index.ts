@@ -57,6 +57,23 @@ export interface CreateHubInput {
   address: string
 }
 
+/** [管理端] 注册用户视图：含注册时间与密码设置状态（绝不包含密码密文） */
+export interface AdminUserDto {
+  id: string
+  phone: string
+  nickname: string
+  status: "Active" | "Disabled"
+  hasPassword: boolean
+  /** ISO 8601 日期字符串 */
+  createdAt: string
+}
+
+/** [管理端] 注册用户列表（含统计） */
+export interface AdminUsersDto {
+  total: number
+  items: AdminUserDto[]
+}
+
 /** [管理端] 更新位置点（仅传的字段生效） */
 export interface UpdateHubInput {
   name?: string

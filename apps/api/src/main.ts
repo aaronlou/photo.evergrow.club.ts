@@ -394,7 +394,27 @@ const toAdminError = <E>(error: E): ApiError | UnauthorizedError =>
 const AdminGroupLive = HttpApiBuilder.group(Api, "admin", (handlers) =>
   Effect.gen(function* () {
     const groupBuy = yield* GroupBuyService
+    const users = yield* UserService
     return handlers
+      .handle("listUsers", ({ request }) =>
+        requireAdmin(request).pipe(
+          Effect.andThen(() => users.listUsers()),
+          Effect.map((list) => ({
+            data: {
+              total: list.length,
+              items: list.map((user) => ({
+                id: user.id,
+                phone: user.phone,
+                nickname: user.nickname,
+                status: user.status,
+                hasPassword: user.hasPassword(),
+                createdAt: user.createdAt.toISOString(),
+              })),
+            },
+          })),
+          Effect.mapError(toAdminError),
+        ),
+      )
       .handle("listHubs", ({ request }) =>
         requireAdmin(request).pipe(
           Effect.andThen(() => groupBuy.listHubs("admin")),

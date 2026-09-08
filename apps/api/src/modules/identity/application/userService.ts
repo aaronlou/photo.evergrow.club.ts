@@ -80,6 +80,9 @@ export class UserService extends Effect.Service<UserService>()("UserService", {
       getProfile: (id: UserId): Effect.Effect<User, UserNotFound | PersistenceError> =>
         repo.findById(id),
 
+      /** [管理端] 全量注册用户列表（按注册时间倒序）；密码只暴露"是否已设置"，绝不返回密文 */
+      listUsers: (): Effect.Effect<ReadonlyArray<User>, PersistenceError> => repo.findAll(),
+
       /**
        * 登录：凭证 → 会话令牌。
        * 安全规则：用户不存在 / 密码错误 / 账号被禁用，一律报同一个 InvalidCredentials，

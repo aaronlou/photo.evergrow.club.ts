@@ -303,6 +303,7 @@ onMounted(() => {
 
     <p class="admin-nav">
       <router-link to="/admin/films">前往商品管理 →</router-link>
+      <router-link to="/admin/users" style="margin-left: 14px">用户管理 →</router-link>
     </p>
   </div>
 </template>

@@ -70,6 +70,15 @@ export const UserRepositorySql = Layer.effect(
           return Option.some(toUser(row as unknown as Parameters<typeof toUser>[0]))
         }),
 
+      findAll: (): Effect.Effect<ReadonlyArray<User>, PersistenceError> =>
+        query(
+          sql`SELECT id, phone, nickname, avatar_url, password_hash, status, created_at FROM users ORDER BY created_at DESC`,
+        ).pipe(
+          Effect.map((rows) =>
+            (rows as unknown as ReadonlyArray<Parameters<typeof toUser>[0]>).map(toUser),
+          ),
+        ),
+
       save: (user: User): Effect.Effect<void, PersistenceError> =>
         query(
           sql`INSERT INTO users (id, phone, nickname, avatar_url, password_hash, status, created_at) VALUES (${user.id}, ${user.phone}, ${user.nickname}, ${user.avatarUrl}, ${user.passwordHash}, ${user.status}, ${user.createdAt})
