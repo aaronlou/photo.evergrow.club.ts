@@ -22,6 +22,26 @@ const withTime = (date: Date, hours: number, minutes: number): Date => {
   return d
 }
 
+/** 中文数字 → 阿拉伯数字（覆盖常见人数表达） */
+const CN_NUM_MAP: Record<string, number> = {
+  一: 1, 两: 2, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9,
+  十: 10, 十一: 11, 十二: 12, 十五: 15, 二十: 20, 三十: 30, 五十: 50, 一百: 100,
+}
+
+const parseCnNumber = (raw: string): number | null => {
+  const direct = CN_NUM_MAP[raw]
+  if (direct !== undefined) return direct
+  // 兜底："二十X"（如 "二十几"→ 20+）
+  const m = raw.match(/^[一二两三四五六七八九]?十$/)
+  if (m && raw.length === 2) return Number(raw[0] === "十" ? 1 : CN_NUM_MAP[raw[0]]) * 10
+  return null
+}
+
+/** 星期几映射（中文/数字） */
+const WEEKDAY_MAP: Record<string, number> = {
+  日: 0, 天: 0, 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6,
+}
+
 /** 解析常见中文时间表达；失败返回 null */
 export const parseChineseDateTime = (text: string, now: Date): Date | null => {
   const t = text.replace(/\s+/g, "")
@@ -29,17 +49,32 @@ export const parseChineseDateTime = (text: string, now: Date): Date | null => {
   const iso = Date.parse(t)
   if (!Number.isNaN(iso) && /\d{4}-\d{2}-\d{2}/.test(t)) return new Date(iso)
 
+  const timeMatch = t.match(/(\d{1,2})[点:：时](半|(\d{1,2})分?)?/)
+  const hours = timeMatch ? Number(timeMatch[1]) : null
+  const minutes = timeMatch ? (timeMatch[2] === "半" ? 30 : Number(timeMatch[3] ?? 0)) : 0
+
+  // 本周/下周/这周 周X（如「本周6」「下周六」「这周日下午」）
+  const weekMatch = t.match(/(本周|下周|这周)?[周星期]([一二三四五六日天123456])/)
+  if (weekMatch) {
+    const target = WEEKDAY_MAP[weekMatch[2]]
+    const today = now.getDay()
+    let offset = (target - today + 7) % 7
+    const isNextWeek = weekMatch[1] === "下周"
+    if (isNextWeek) offset = offset === 0 ? 7 : offset + 7
+    else if (offset === 0) offset = 0 // 本周且就是今天
+    const base = new Date(now)
+    base.setDate(base.getDate() + offset)
+    return hours !== null ? withTime(base, hours, minutes) : withTime(base, 14, 0)
+  }
+
   // 相对日：今天/明天/后天/大后天 + 可选时间
   const dayOffsetMap: Array<[RegExp, number]> = [
     [/今天|今晚/, 0],
     [/明天/, 1],
     [/后天/, 2],
-    [/大后天/, 3],
+    [/大后天/, 3]
   ]
-  const timeMatch = t.match(/(\d{1,2})[点:：时](半|(\d{1,2})分?)?/)
-  const hours = timeMatch ? Number(timeMatch[1]) : null
-  const minutes = timeMatch ? (timeMatch[2] === "半" ? 30 : Number(timeMatch[3] ?? 0)) : 0
-
+  
   for (const [re, offset] of dayOffsetMap) {
     if (re.test(t)) {
       const base = new Date(now)
@@ -62,6 +97,17 @@ export const parseChineseDateTime = (text: string, now: Date): Date | null => {
   }
 
   return null
+}
+
+/**
+ * 从自由文本启发式提取地点：
+ * 「在」开头 + 常见地名后缀词（公园/广场/湖/江/山/路/街/区/馆/店/里/园/场/湾/港）为止
+ * 如「在滨江公园拍人像」→ 滨江公园；「在杭州西湖」→ 杭州西湖
+ */
+const LOCATION_SUFFIXES = "公园|广场|湖畔?|江边?|山|路|街|区|馆|店|里|园|场|湾|港|舍|亭|楼|塔|桥|村|镇|城"
+const extractLocation = (message: string): string | null => {
+  const m = message.match(new RegExp(`在([一-龥A-Za-z]{2,16}?(?:${LOCATION_SUFFIXES}))`))
+  return m ? m[1] : null
 }
 
 /** 「字段名：值」提取（中英文冒号，字段名模糊匹配） */
@@ -101,9 +147,24 @@ export const RuleBasedDraftExtractor = Layer.succeed(
         const { message, draft, now } = input
         const found: ActivityDraft = { ...extractLabeledFields(message) }
 
-        // 「数字 + 人」→ 名额
-        const cap = message.match(/(\d{1,4})\s*人/)
+        // 「数字 + 人」→ 名额（阿拉伯数字；「20个人」「20来个人」）
+        const cap = message.match(/(\d{1,4})\s*[来多个]*\s*人/)
         if (cap) found.capacity = Number(cap[1])
+
+        // 中文数字人数（「二十来个人」「十来个人」「十五人」）
+        if (found.capacity === undefined) {
+          const cnCap = message.match(/([一二两三四五六七八九]{1,3}|[一二三四五六七八九]?十)\s*[来多个]*\s*人/)
+          if (cnCap) {
+            const n = parseCnNumber(cnCap[1])
+            if (n !== null) found.capacity = n
+          }
+        }
+
+        // 启发式地点提取（「在滨江公园」「在杭州西湖」）
+        if (found.location === undefined) {
+          const loc = extractLocation(message)
+          if (loc) found.location = loc
+        }
 
         // 时间：本轮话语里的第一个可解析时间 → 活动开始；并补全配套时间
         const start = parseChineseDateTime(message, now)
@@ -131,10 +192,15 @@ export const RuleBasedDraftExtractor = Layer.succeed(
         const extracted = Object.keys(found)
           .filter((k) => k !== "description" || found.description)
           .map((k) => fieldLabels[k] ?? k)
-        const reply =
-          extracted.length > 0
-            ? `好的，我记下了：${extracted.join("、")}。`
-            : "这句话里我没有识别到明确的字段信息。你可以用「字段：值」的方式告诉我，比如「地点：徐家汇公园」「名额：20」或「活动时间：9月20日 14点」。"
+
+        // 回复要自然：识别到部分信息就给正面反馈，而不是机械报错
+        let reply: string
+        if (extracted.length > 0) {
+          reply = `好的，我记下了：${extracted.join("、")}。`
+        } else {
+          reply =
+            "我好像抓到了一些线索但还不太确定。你可以再具体说说吗？比如活动叫什么名字、在哪儿办、什么时候、多少人——我会边听边填好。"
+        }
 
         return { patch: found, reply }
       }),

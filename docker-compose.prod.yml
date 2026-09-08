@@ -17,6 +17,13 @@ services:
       REDIS_URL: redis://redis:6379
       # 管理端令牌（/admin/* 接口校验 x-admin-token；留空则管理端禁用）
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      # LLM 接入（可选；不配则 AI 功能回落到规则解析模式）
+      # 密钥只来自这里（环境变量），绝不写入数据库
+      LLM_PROVIDER: ${LLM_PROVIDER:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-}
     depends_on:
       postgres:
         condition: service_healthy
