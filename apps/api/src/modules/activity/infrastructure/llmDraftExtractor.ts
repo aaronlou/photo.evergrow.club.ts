@@ -151,6 +151,8 @@ export const LlmDraftExtractor = Layer.effect(
             return {
               patch: {},
               reply: "助手暂时没能响应，请稍后再试；你也可以直接改用表单填写。",
+              engine: "llm" as const,
+              model: override.model,
             }
           }
           const text = result.right
@@ -161,6 +163,8 @@ export const LlmDraftExtractor = Layer.effect(
             return {
               patch: {},
               reply: "抱歉，我刚才没理解清楚。你可以换个说法，或者用「地点：徐家汇公园」这样的格式告诉我。",
+              engine: "llm" as const,
+              model: override.model,
             }
           }
 
@@ -169,7 +173,7 @@ export const LlmDraftExtractor = Layer.effect(
           const reply =
             aiReply || (Object.keys(patch).length > 0 ? "好的，已记录。" : "抱歉，这句话里我没抓到活动信息。")
 
-          return { patch, reply }
+          return { patch, reply, engine: "llm" as const, model: override.model }
         }),
     })
   }),

@@ -113,6 +113,11 @@ export const ActivityApi = HttpApiGroup.make("activity")
             reply: Schema.String,
             missing: Schema.Array(Schema.String),
             complete: Schema.Boolean,
+            // 提取来源（排查"这次回复是规则版还是哪个 LLM 模型"）
+            source: Schema.Struct({
+              engine: Schema.Literal("llm", "rule"),
+              model: Schema.optional(Schema.String),
+            }),
           }),
         }),
       )

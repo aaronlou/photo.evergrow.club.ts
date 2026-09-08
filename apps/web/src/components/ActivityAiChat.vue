@@ -16,6 +16,8 @@ const message = useMessage()
 interface ChatMsg {
   role: "user" | "assistant"
   text: string
+  /** 提取来源（排查用：规则版 or LLM 模型名） */
+  source?: string
 }
 
 const msgs = ref<ChatMsg[]>([
@@ -71,7 +73,13 @@ async function send() {
     draft.value = data.draft
     missing.value = data.missing
     complete.value = data.complete
-    msgs.value.push({ role: "assistant", text: data.reply })
+    msgs.value.push({
+      role: "assistant",
+      text: data.reply,
+      source: data.source.engine === "llm"
+        ? `LLM${data.source.model ? ` · ${data.source.model}` : "（环境默认模型）"}`
+        : "规则解析（未配 LLM key）",
+    })
   } catch (e) {
     msgs.value.push({
       role: "assistant",
@@ -107,7 +115,10 @@ function confirmDraft() {
           class="bubble-row"
           :class="m.role"
         >
-          <div class="bubble" :class="m.role">{{ m.text }}</div>
+          <div class="bubble" :class="m.role">
+            {{ m.text }}
+            <div v-if="m.source" class="bubble-source">{{ m.source }}</div>
+          </div>
         </div>
         <div v-if="sending" class="bubble-row assistant">
           <div class="bubble assistant">
@@ -221,6 +232,14 @@ function confirmDraft() {
   background: var(--evergrow-primary, #2f9e63);
   color: #fff;
   border-bottom-right-radius: 4px;
+}
+
+.bubble-source {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed #d8e2da;
+  font-size: 11px;
+  color: #9aa59e;
 }
 
 .chat-input-row {

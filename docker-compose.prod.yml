@@ -13,6 +13,8 @@ services:
     restart: unless-stopped
     environment:
       PORT: "3000"
+      # 容器内时区（自然语言时间解析「本周日14点」按此理解，UTC 会偏 8 小时）
+      TZ: Asia/Shanghai
       DATABASE_URL: postgres://evergrow:${POSTGRES_PASSWORD:-evergrow}@postgres:5432/evergrow
       REDIS_URL: redis://redis:6379
       # 管理端令牌（/admin/* 接口校验 x-admin-token；留空则管理端禁用）

@@ -177,6 +177,19 @@ export const RuleBasedDraftExtractor = Layer.succeed(
           found.signupEndAt = signupEnd.toISOString()
         }
 
+        // 活动名称启发式：常见活动类型词（「摄影讨论会」「外拍」「分享会」…）
+        if (found.name === undefined) {
+          const typeMatch = message.match(
+            /([一-龥]{2,20}?(?:讨论会|交流会|分享会|讲座|沙龙|工作坊|外拍|约拍|扫街|徒步|展览))/
+          )
+          if (typeMatch) found.name = typeMatch[1]
+        }
+
+        // 活动介绍启发式：「主题是X」「内容是X」「以X为主」→ 整句作为介绍
+        if (found.description === undefined && /主题是|内容是|以.+为主/.test(message)) {
+          found.description = message.trim()
+        }
+
         // 字段名 → 中文标签（回复面向用户，不暴露内部字段名）
         const fieldLabels: Record<string, string> = {
           name: "活动名称",
@@ -202,7 +215,7 @@ export const RuleBasedDraftExtractor = Layer.succeed(
             "我好像抓到了一些线索但还不太确定。你可以再具体说说吗？比如活动叫什么名字、在哪儿办、什么时候、多少人——我会边听边填好。"
         }
 
-        return { patch: found, reply }
+        return { patch: found, reply, engine: "rule" }
       }),
   }),
 )

@@ -30,6 +30,10 @@ export interface DraftExtraction {
   patch: ActivityDraft
   /** 面向用户的回复（汇报提取结果 / 追问） */
   reply: string
+  /** 提取引擎标识（可观测性：排查"这次回复是谁给的"——规则版还是哪个 LLM） */
+  engine: "llm" | "rule"
+  /** 引擎为 llm 时的模型标识（规则版无此字段） */
+  model?: string
 }
 
 /**

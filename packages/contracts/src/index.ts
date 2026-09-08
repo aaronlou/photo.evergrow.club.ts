@@ -304,4 +304,6 @@ export interface ActivityDraftChatResult {
   missing: string[]
   /** 草稿是否完备（可提交） */
   complete: boolean
+  /** 提取来源（排查是规则版还是哪个 LLM 模型生成的回复） */
+  source: { engine: "llm" | "rule"; model?: string }
 }
