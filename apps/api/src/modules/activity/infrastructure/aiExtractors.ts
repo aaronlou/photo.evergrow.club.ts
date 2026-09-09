@@ -178,11 +178,16 @@ export const RuleBasedDraftExtractor = Layer.succeed(
         }
 
         // 活动名称启发式：常见活动类型词（「摄影讨论会」「外拍」「分享会」…）
+        // 优先用「进行/举办/组织 X」的 X（排除"本周日在杭州西湖区进行"这类前缀）
         if (found.name === undefined) {
-          const typeMatch = message.match(
-            /([一-龥]{2,20}?(?:讨论会|交流会|分享会|讲座|沙龙|工作坊|外拍|约拍|扫街|徒步|展览))/
-          )
-          if (typeMatch) found.name = typeMatch[1]
+          const types = "讨论会|交流会|分享会|讲座|沙龙|工作坊|外拍|约拍|扫街|徒步|展览"
+          const withVerb = message.match(new RegExp(`(?:进行|举办|组织)([一-龥]{2,20}?(?:${types}))`))
+          if (withVerb) {
+            found.name = withVerb[1]
+          } else {
+            const typeMatch = message.match(new RegExp(`([一-龥]{2,20}?(?:${types}))`))
+            if (typeMatch) found.name = typeMatch[1]
+          }
         }
 
         // 活动介绍启发式：「主题是X」「内容是X」「以X为主」→ 整句作为介绍

@@ -148,6 +148,11 @@ export const LlmDraftExtractor = Layer.effect(
             .pipe(Effect.either)
 
           if (Either.isLeft(result)) {
+            // ★ 可观测性关键点：LLM 调用失败必须留痕，否则 docker logs 里只有降级回复看不到原因
+            const err = result.left
+            yield* Effect.logWarning(
+              `[LLM] 调用失败 ${err.provider}（model=${override.model ?? "env默认"}）: ${err.message}`,
+            )
             return {
               patch: {},
               reply: "助手暂时没能响应，请稍后再试；你也可以直接改用表单填写。",
@@ -159,6 +164,10 @@ export const LlmDraftExtractor = Layer.effect(
 
           const parsed = extractJsonObject(text)
           if (!parsed) {
+            // ★ 可观测性：LLM 返回了但格式不符（输出非 JSON），记录原文便于调试
+            yield* Effect.logWarning(
+              `[LLM] 输出无法解析为 JSON（model=${override.model ?? "env默认"}）: ${text.slice(0, 200)}`,
+            )
             // 降级：AI 没按格式输出，不猜、不崩，直接请用户再说一次
             return {
               patch: {},
