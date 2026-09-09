@@ -37,7 +37,7 @@ const post = (
         },
         body: JSON.stringify({
           model: input.model ?? settings.model,
-          max_tokens: input.maxTokens ?? 1024,
+          max_tokens: input.maxTokens ?? 4096,
           temperature: input.temperature ?? settings.temperature,
           ...(system ? { system } : {}),
           messages,
@@ -57,11 +57,12 @@ const pickText = (
 ): Effect.Effect<string, LlmError> => {
   const blocks = (raw as { content?: Array<{ type?: string; text?: string }> })?.content
   const text = blocks?.filter((b) => b.type === "text").map((b) => b.text ?? "").join("")
-  return text && text.trim()
-    ? Effect.succeed(text.trim())
-    : Effect.fail(
-        toLlmError("anthropic")(new Error("LLM 响应中未找到文本（content[].text 为空）")),
-      )
+  if (text && text.trim()) return Effect.succeed(text.trim())
+  // ★ 报错自带响应结构预览，便于在 [LLM] 日志直接定位
+  const preview = JSON.stringify(raw).slice(0, 400)
+  return Effect.fail(
+    toLlmError("anthropic")(new Error(`LLM 响应中未找到文本（content[].text 为空）。响应结构: ${preview}`)),
+  )
 }
 
 export const anthropicLive = (settings: LlmSettings) =>

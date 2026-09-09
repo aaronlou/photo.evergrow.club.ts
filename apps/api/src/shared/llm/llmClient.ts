@@ -108,8 +108,12 @@ export const llmSettings: Effect.Effect<Option.Option<LlmSettings>> =
       ).includes(provider)
         ? (provider as LlmProvider)
         : ("openai" as LlmProvider)
-      const model = Option.getOrUndefined(raw.model)
-      const baseUrl = Option.getOrUndefined(raw.baseUrl)
+      // ★ 空串 = 未配置（docker compose 用 ${VAR:-} 会给容器注入 ""，
+      //   Config 会把它判为"已配置"，从而用空串覆盖 defaultsFor 的默认接入点 → URL 拼接失败）
+      const rawModel = Option.getOrUndefined(raw.model)
+      const model = rawModel && rawModel.trim() !== "" ? rawModel : undefined
+      const rawBase = Option.getOrUndefined(raw.baseUrl)
+      const baseUrl = rawBase && rawBase.trim() !== "" ? rawBase : undefined
       const { baseUrl: resolvedBase, model: resolvedModel } = defaultsFor(normalized, model, baseUrl)
       return Option.some({
         provider: normalized,
