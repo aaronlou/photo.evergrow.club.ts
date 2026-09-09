@@ -7,10 +7,19 @@
 # =====================================================================
 name: evergrow
 
+# 统一的日志轮转：json-file 驱动落盘于宿主机，最多保留 5 个 × 20MB，防磁盘膨胀。
+# 说明：容器重建后 docker logs 只查当前容器；需长期留档请用下面的 journald / 日志采集方案。
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
 services:
   api:
     image: ${API_IMAGE:-ghcr.io/aaronlou/photo.evergrow.club.ts/api:latest}
     restart: unless-stopped
+    logging: *default-logging
     environment:
       PORT: "3000"
       # 容器内时区（自然语言时间解析「本周日14点」按此理解，UTC 会偏 8 小时）
@@ -38,6 +47,7 @@ services:
   web:
     image: ${WEB_IMAGE:-ghcr.io/aaronlou/photo.evergrow.club.ts/web:latest}
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "${WEB_PORT:-8080}:80"
     depends_on:
@@ -46,6 +56,7 @@ services:
   postgres:
     image: postgres:17-alpine
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_USER: evergrow
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-evergrow}
@@ -61,6 +72,7 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
